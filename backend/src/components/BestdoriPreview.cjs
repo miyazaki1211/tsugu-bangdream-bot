@@ -17,31 +17,8 @@ const loadImageFromPath = utils.loadImageFromPath
  *
  */
 
-/**
- *
- * @param {object} payload
- * @param {number} payload.id
- * @param {string} payload.title
- * @param {string} payload.artist
- * @param {string} payload.author
- * @param {string} payload.diff
- * @param {number} payload.level
- * @param {string | Buffer} payload.cover
- * @param {Array<BestdoriNote>} chart
- * @returns Promise<Buffer>
- */
-async function DrawPreview ({id, title, artist, author, diff, level, cover}, chart) {
-    // 根据BPM和beat计算出真实时间
-    /*
-    const timepoints = chart.filter(n => n.type === "BPM")
-    timepoints.sort((a, b) => a.beat - b.beat)
-    timepoints.forEach((n, i, a) => {
-        if (i === 0) a[i].time = 0
-        else a[i].time = a[i - 1].time + 60 / a[i - 1].bpm * (a[i].beat - a[i - 1].beat)
-        console.log(a[i].beat, a[i].bpm, a[i].time)
-    })
-
-     */
+// 根据BPM和beat计算出真实时间, 就地写入每个 note / connection 的 .time 字段 (秒)
+function ResolveChartTimes (chart) {
     const timepoints = chart.filter(n => n.type === 'BPM')
     timepoints.sort((a, b) => a.beat - b.beat)
     timepoints.forEach((tp, i, a) => {
@@ -68,6 +45,28 @@ async function DrawPreview ({id, title, artist, author, diff, level, cover}, cha
             a[i].time = tp.time + 60 / tp.bpm * (a[i].beat - tp.beat)
         }
     })
+}
+
+/**
+ * @param {object} payload
+ * @param {number} payload.id
+ * @param {string} payload.title
+ * @param {string} payload.artist
+ * @param {string} payload.author
+ * @param {string} payload.diff
+ * @param {number} payload.level
+ * @param {string | Buffer} payload.cover
+ * @param {number} [payload.renderScale] 超采样倍率(>1 时启用, 渲染后降采样回原尺寸提升清晰度)
+ * @param {boolean} [payload.infoArea] 是否绘制左侧歌曲信息列(默认 true; 概要块已含歌曲信息时可传 false)
+ * @param {number} [payload.blockDistance] 栏间距, 每栏左右各占的宽度(默认 72, 最小 24)
+ * @param {number} [payload.timeStep] 时间轴标记间隔秒数(默认 5)
+ * @param {number} [payload.noteCountStep] note 计数线间隔(默认 50)
+ * @param {Array<BestdoriNote>} chart
+ * @param {object} [overlays] 可选叠加层: under 画在音符之下(色带), over 画在音符之上(标记)
+ * @returns Promise<Buffer>
+ */
+async function DrawPreview ({id, title, artist, author, diff, level, cover, renderScale, infoArea, blockDistance: blockDistanceOpt, timeStep, noteCountStep}, chart, overlays) {
+    ResolveChartTimes(chart)
 
     const notes = []
     const generateSim = function (beat, time, lane) {
@@ -135,10 +134,11 @@ async function DrawPreview ({id, title, artist, author, diff, level, cover}, cha
     })
 
     const offset = 8;
-    const infoAreaWidth = 240;
+    // infoArea: false 隐藏左侧歌曲信息列(概要块已含歌曲信息时使用)
+    const infoAreaWidth = (infoArea === false) ? 0 : 240;
     const laneWidth = 32; // 轨道宽度需要包括分割线宽度；分割线平均占用其左右两侧轨道的空间。
     const splitLineWidth = 2;
-    const blockDistance = 72; // 块与块之前的空隙；注意，这个数值是每块左右各占用的宽度。
+    const blockDistance = (Number.isFinite(blockDistanceOpt) && blockDistanceOpt >= 24) ? blockDistanceOpt : 72; // 块与块之前的空隙；注意，这个数值是每块左右各占用的宽度。
     const heightPerSecond = 216; // 每秒对应的高度。
     const displayNotes = notes.filter(n => ['Single', 'SingleOff', 'Skill', 'Flick', 'Directional', 'Long'].includes(n.type))
     const chartLength = Math.ceil(displayNotes[displayNotes.length - 1].time + 0.25);
@@ -164,8 +164,10 @@ async function DrawPreview ({id, title, artist, author, diff, level, cover}, cha
 
     const secondsPerCol = chartLength / colCount;
 
-    const canvas = new Canvas.Canvas(width, height);
+    const renderScaleFactor = (Number.isFinite(renderScale) && renderScale > 1) ? renderScale : 1;
+    const canvas = new Canvas.Canvas(width * renderScaleFactor, height * renderScaleFactor);
     const ctx = canvas.getContext('2d');
+    ctx.scale(renderScaleFactor, renderScaleFactor);
 
     // 读取音符图片
     const img_notes = {
@@ -327,19 +329,44 @@ async function DrawPreview ({id, title, artist, author, diff, level, cover}, cha
     ctx.save()
     ctx.font = '18px "Arial"';
     ctx.fillStyle = '#FFF';
-    ctx.textAlign = 'right';
-    for (let i = 0; i <= chartLength; i += 5) {
+    const timeAxisStep = (Number.isFinite(timeStep) && timeStep > 0) ? timeStep : 5;
+    for (let i = 0; i <= chartLength; i += timeAxisStep) {
         const drawCol = Math.floor(i / secondsPerCol);
         const x = infoAreaWidth + drawCol * originalWidth + blockDistance;
         const w = 7 * laneWidth;
         const y = height - (i * heightPerSecond) % height;
         adaptText(18, y);
-        ctx.fillText(
-            `${Math.floor(i / 60)}:${(i % 60)}`,
-            x - 8,
-            y);
+        if (infoAreaWidth > 0) {
+            ctx.textAlign = 'right';
+            ctx.fillText(
+                `${Math.floor(i / 60)}:${(i % 60)}`,
+                x - 8,
+                y);
+        } else {
+            // 无信息列时画在轨道内左端, 加描影保证可读
+            ctx.textAlign = 'left';
+            ctx.save();
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.85)';
+            ctx.shadowBlur = 4;
+            ctx.fillText(
+                `${Math.floor(i / 60)}:${(i % 60)}`,
+                x + 6,
+                y);
+            ctx.restore();
+        }
     }
     ctx.restore()
+
+    // 布局信息(供叠加层换算坐标)
+    const layout = {
+        width, height, colCount, secondsPerCol, chartLength,
+        infoAreaWidth, blockDistance, laneWidth, splitLineWidth,
+        heightPerSecond, originalWidth, notes
+    }
+    // 音符之下的叠加层(如技能窗口色带)
+    if (overlays && typeof overlays.under === 'function') {
+        overlays.under(ctx, layout)
+    }
 
     // 画音符位置线和BPM线 // 如果不提前画，会覆盖住某些双押的音符
     for (let i = 0, n = 0; i < notes.length; i++) {
@@ -353,7 +380,8 @@ async function DrawPreview ({id, title, artist, author, diff, level, cover}, cha
 
         if (noteType.includes(note.type)) {
             n++;
-            if (n % 50 === 0) {
+            const countStep = (Number.isFinite(noteCountStep) && noteCountStep > 0) ? noteCountStep : 50;
+            if (n % countStep === 0) {
                 ctx.font = '18px "Arial"';
                 ctx.fillStyle = 'rgba(128, 128, 128, 0.5)';
                 ctx.textAlign = 'left';
@@ -463,6 +491,18 @@ async function DrawPreview ({id, title, artist, author, diff, level, cover}, cha
             //
         }
     })
-    return canvas
+    // 音符之上的叠加层(如微操标记)
+    if (overlays && typeof overlays.over === 'function') {
+        overlays.over(ctx, layout)
+    }
+    if (renderScaleFactor === 1) return canvas
+    // 降采样回逻辑尺寸输出(超采样抗锯齿)
+    const output = new Canvas.Canvas(width, height);
+    const outputCtx = output.getContext('2d');
+    outputCtx.imageSmoothingEnabled = true;
+    outputCtx.imageSmoothingQuality = 'high';
+    outputCtx.drawImage(canvas, 0, 0, width, height);
+    return output
 }
 module.exports.DrawPreview = DrawPreview
+module.exports.ResolveChartTimes = ResolveChartTimes

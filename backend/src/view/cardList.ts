@@ -1,7 +1,9 @@
 import { Card } from "@/types/Card";
 import { Character } from "@/types/Character";
 import mainAPI from "@/types/_Main"
+import { getPresentEvent } from "@/types/Event";
 import { drawCardDetail } from '@/view/cardDetail';
+import { PlayerDB } from '@/database/playerDB';
 import { match, checkRelationList, FuzzySearchResult } from "@/fuzzySearch"
 import { Canvas } from 'skia-canvas'
 import { drawCardIcon } from "@/components/card"
@@ -14,7 +16,7 @@ import { globalDefaultServer } from '@/config';
 
 const maxWidth = 7000
 
-export async function drawCardList(matches: FuzzySearchResult, displayedServerList: Server[] = globalDefaultServer, useEasyBG: boolean, compress: boolean): Promise<Array<Buffer | string>> {
+export async function drawCardList(matches: FuzzySearchResult, displayedServerList: Server[] = globalDefaultServer, useEasyBG: boolean, compress: boolean, playerInfo?: { playerId: number, server: Server }): Promise<Array<Buffer | string>> {
 
     //计算模糊搜索结果
     const tempCardList: Array<Card> = matchCardList(matches, displayedServerList);
@@ -25,6 +27,11 @@ export async function drawCardList(matches: FuzzySearchResult, displayedServerLi
     if (tempCardList.length == 1) {
         return await drawCardDetail(tempCardList[0].cardId, displayedServerList, useEasyBG, compress)
     }
+
+    //若提供了绑定玩家信息，获取该玩家已导入的卡牌数据，用于在列表中标记已拥有的卡牌并渲染星光等级/技能等级
+    const ownedCardMap = await getPlayerOwnedCardMap(playerInfo);
+    //获取国服当前活动卡牌的最大卡牌ID，作为日服限定卡红/灰标记的分界阈值
+    const cnCurrentEventMaxCardId = getCnCurrentEventMaxCardId();
 
     //计算表格，X轴为颜色，Y轴为角色
     var characterIdList: number[] = [];
@@ -65,7 +72,7 @@ export async function drawCardList(matches: FuzzySearchResult, displayedServerLi
             for (let j = 0; j < characterIdList.length; j++) {
                 const characterId = characterIdList[j];
                 var tempAttributeCardList = getCardListByAttributeAndCharacterId(tempCardList, attribute, characterId);
-                promise.push(tempAttributeCardImageList.push(await drawCardListLine(tempAttributeCardList)));
+                promise.push(tempAttributeCardImageList.push(await drawCardListLine(tempAttributeCardList, ownedCardMap, cnCurrentEventMaxCardId)));
                 //画角色头像
                 if (i == 0) {
                     promise.push(characterIconImageList.push(await drawCharacterIcon(characterId)));
@@ -123,7 +130,7 @@ export async function drawCardList(matches: FuzzySearchResult, displayedServerLi
                 const attribute = attributeList[j];
                 var tempAttributeCardList = getCardListByAttributeAndCharacterId(tempCardList, attribute, characterId);
                 if (tempAttributeCardList.length != 0) {
-                    promise.push(tempCardImageList.push(await drawCardListLine(tempAttributeCardList)));
+                    promise.push(tempCardImageList.push(await drawCardListLine(tempAttributeCardList, ownedCardMap, cnCurrentEventMaxCardId)));
                     //画角色头像
                     if (icon) {
                         promise.push(characterIconImageList.push(await drawCharacterIcon(characterId)));
@@ -202,8 +209,47 @@ function getCardListByAttributeAndCharacterId(cardFullList: Card[], attribute: '
     return cardList;
 }
 
+//玩家已导入的卡牌数据条目 (players 集合 cardList 的值结构)
+type OwnedCardInfo = { illustTrainingStatus: boolean, limitBreakRank: number, skillLevel: number }
+
+//玩家已导入的卡牌数据库(players 集合), 存有玩家导入的全量卡牌数据 cardList
+const playerDB = new PlayerDB(
+    process.env.MONGODB_URI ?? 'mongodb://localhost:27017/',
+    process.env.MONGODB_DATABASE_NAME ?? 'tsugu-bangdream-bot'
+);
+
+async function getPlayerOwnedCardMap(playerInfo?: { playerId: number, server: Server }): Promise<Map<number, OwnedCardInfo>> {
+    const ownedCardMap = new Map<number, OwnedCardInfo>();
+    if (playerInfo == undefined) {
+        return ownedCardMap;
+    }
+    try {
+        const player = await playerDB.findPlayer(playerInfo.playerId);
+        if (player == null) {
+            return ownedCardMap;
+        }
+        const cardListEntries = Object.entries(player.cardList ?? {}) as Array<[string, OwnedCardInfo]>;
+        for (const [cardId, card] of cardListEntries) {
+            ownedCardMap.set(Number(cardId), card);
+        }
+    }
+    catch (e) {
+        //获取玩家卡牌数据失败时不影响卡牌列表的正常渲染
+    }
+    return ownedCardMap;
+}
+
+//获取国服当前活动卡牌的最大卡牌ID，无法确定时返回 NaN (此时不进行日服限定红/灰标记)
+function getCnCurrentEventMaxCardId(): number {
+    const currentEvent = getPresentEvent(Server.cn);
+    if (currentEvent == null || currentEvent.rewardCards.length == 0) {
+        return NaN;
+    }
+    return Math.max(...currentEvent.rewardCards);
+}
+
 //每个颜色和角色的一行
-async function drawCardListLine(cardList: Card[]) {
+async function drawCardListLine(cardList: Card[], ownedCardMap: Map<number, OwnedCardInfo>, cnCurrentEventMaxCardId: number) {
     if (cardList.length == 0) {
         return new Canvas(1, 140);
     }
@@ -230,14 +276,37 @@ async function drawCardListLine(cardList: Card[]) {
     //画卡牌，从左到右，宽度120，间隔20
     for (let i = 0; i < cardList.length; i++) {
         const tempCard = cardList[i];
+        const ownedCard = ownedCardMap.get(tempCard.cardId);
+        //已拥有的卡牌渲染玩家导入的星光等级与技能等级 (技能等级角标会替换默认的卡牌类型角标位置)
         const cardIcon = await drawCardIcon({
             card: tempCard,
             trainingStatus: true,
             cardIdVisible: true,
-            skillTypeVisible: true
+            skillTypeVisible: true,
+            limitBreakRank: ownedCard?.limitBreakRank ?? 0,
+            skillLevel: ownedCard?.skillLevel
         })
         var ratio = 120 / cardIcon.width
         ctx.drawImage(cardIcon, i * 140, 0, cardIcon.width * ratio, cardIcon.height * ratio)
+        let markerColor: string | null = null
+        const isJpOnlyCard = tempCard.releasedAt[Server.jp] != null && tempCard.releasedAt[Server.cn] == null
+        if (isJpOnlyCard) {
+            if (!Number.isNaN(cnCurrentEventMaxCardId)) {
+                markerColor = tempCard.cardId < cnCurrentEventMaxCardId ? '#e53935' : '#9e9e9e'
+            }
+        }
+        else if (ownedCard != undefined) {
+            markerColor = '#44C527'
+        }
+        if (markerColor != null) {
+            ctx.fillStyle = markerColor;
+            ctx.beginPath();
+            ctx.arc(i * 140 + 107, 130, 10, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = '#ffffff';
+            ctx.stroke();
+        }
     }
     return canvas
 }

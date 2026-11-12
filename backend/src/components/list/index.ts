@@ -3,9 +3,11 @@ import { drawRoundedRectWithText } from '@/image/drawRect';
 import { drawText, drawTextWithImages } from '@/image/text';
 import { drawDottedLine } from '@/image/dottedLine'
 import { Server, getServerByPriority, getIcon } from '@/types/Server'
-import { stackImageHorizontal } from '@/components/utils';
+import { stackImageHorizontal, resizeImage } from '@/components/utils';
 import { globalDefaultServer } from '@/config';
 import { setFontStyle } from '@/image/text';
+import { Band } from '@/types/Band';
+import { Attribute } from '@/types/Attribute';
 
 //表格用默认虚线
 export const line: Canvas = drawDottedLine({
@@ -54,7 +56,7 @@ export function drawList({
 
     var textImage: Canvas
     if (typeof text == "string") {
-        textImage = drawText({ text, maxWidth: xmax, lineHeight });
+        textImage = drawText({ text, maxWidth: xmax, lineHeight, color });
     }
     else if (content != undefined) {
         textImage = drawTextWithImages({
@@ -379,4 +381,43 @@ export function drawListWithLine(textImageList: Array<Canvas | Image>): Canvas {
         y += element.height
     }
     return canvas
+}
+
+export async function drawBandItemContent(bandId: string): Promise<Array<string | Canvas | Image>> {
+    if (bandId === '1000') {
+        return ['大家的乐器'];
+    }
+    const ids = bandId.split(',').map((id) => id.trim()).filter((id) => id.length > 0);
+    if (ids.length <= 1) {
+        return [resizeImage({
+            image: await new Band(parseInt(ids[0] ?? bandId)).getLogo(),
+            heightMax: 80,
+        })];
+    }
+    return ['大家的乐器'];
+}
+
+//optimize 返回的 items.attribute: "~all"=全部颜色, 单属性, 或逗号分隔的多属性 (如 "cool,happy,powerful,pure")
+const attributeNameCN: { [name: string]: string } = {
+    powerful: '红',
+    cool: '蓝',
+    happy: '橙',
+    pure: '绿',
+};
+
+export async function drawAttributeItemContent(attribute: string): Promise<Array<string | Canvas | Image>> {
+    if (attribute === '~all') {
+        return ['全部颜色'];
+    }
+    const names = attribute.split(',').map((name) => name.trim()).filter((name) => name.length > 0);
+    if (names.length <= 1) {
+        return [resizeImage({
+            image: await new Attribute(attribute.trim()).getIcon(),
+            heightMax: 40,
+        })];
+    }
+    if (names.length >= 4) {
+        return ['全部颜色'];
+    }
+    return [names.map((name) => attributeNameCN[name] ?? name).join('/')];
 }

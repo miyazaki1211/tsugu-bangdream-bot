@@ -12,9 +12,9 @@ import { drawTitle } from '@/components/title'
 import { outputFinalBuffer } from '@/image/output'
 import { Song } from '@/types/Song'
 import { drawSongInListBig } from '@/components/list/song';
-import { resizeImage, stackImage } from '@/components/utils';
+import { resizeImage, stackImage, stackImageHorizontal } from '@/components/utils';
 import { drawCardIcon } from '@/components/card'
-import { eventTypeList, playerDetail, medleyLimit, limit, checkCard } from '@/types/BuildTypes';
+import { playerDetail, medleyLimit, limit, checkCard } from '@/types/BuildTypes';
 import { drawText } from '@/image/text';
 import { AreaItemType, AreaItemTypeList } from '@/types/AreaItem';
 import { Band } from '@/types/Band';
@@ -26,9 +26,6 @@ export async function drawTeamBuildDetail(player: playerDetail, server: Server, 
     const event = new Event(player.currentEvent)
     if (!event.isExist) {
         return ['错误: 活动不存在']
-    }
-    if (!eventTypeList.includes(event.eventType)) {
-        return ['错误：活动序号' + player.currentEvent + `类型为${event.eventType}，请使用 组队计算+活动序号 设置正确的活动`]
     }
     let defaultServer: Server = server
     if (!event.startAt[defaultServer]) {
@@ -160,15 +157,77 @@ export async function drawTeamBuildDetail(player: playerDetail, server: Server, 
 
     all.push(listImage)
 
-    //选择歌曲
-    const songList = player.eventSongs[player.currentEvent], songImage = []
+    //选择歌曲 (未设置时默认当期歌曲)
+    let songList = player.eventSongs[player.currentEvent]
+    if (!songList || songList.length == 0) {
+        songList = []
+        const serverMusics = event.musics?.[defaultServer]?.length
+            ? event.musics[defaultServer]
+            : event.musics?.find((m) => m && m.length > 0)
+        for (const element of serverMusics ?? []) {
+            const song = new Song(element.musicId)
+            songList.push({ songId: song.songId, difficulty: song.getMaxMetaDiffId() })
+        }
+    }
+    const songImage = []
     for (const { songId, difficulty } of songList) {
         songImage.push(await drawSongInListBig(new Song(songId), difficulty))
     }
-    all.push(drawDatablock({
-        topLeftText: '选择歌曲',
-        list: [drawListMerge(songImage, widthMax, true, "bottom")]
-    }))
+    // 协力歌曲 (PT计算使用)，内容格式与选择歌曲一致 (组曲不显示，无需渲染)
+    const ptSongImage: Canvas | null = (player.ptSong && event.eventType != 'medley')
+        ? await drawSongInListBig(new Song(player.ptSong.songId), player.ptSong.difficulty)
+        : null
+    if (event.eventType == 'medley') {
+        // 组曲: 原版显示，选择歌曲独占整行，不显示协力歌曲
+        const songsRow: Canvas = songImage.length > 0
+            ? drawListMerge(songImage, widthMax, true, "bottom")
+            : drawList({ key: '歌曲', text: '暂无歌曲数据' })
+        all.push(drawDatablock({
+            topLeftText: '选择歌曲',
+            list: [songsRow]
+        }))
+    }
+    else if (event.eventType == 'versus' || event.eventType == 'challenge') {
+        // 对邦/CP: 左侧选择歌曲(原版)，右侧协力歌曲，两侧等宽对称
+        const halfWidth = 500
+        let songsRow: Canvas
+        if (songImage.length == 0) {
+            songsRow = drawList({ key: '歌曲', text: '暂无歌曲数据', maxWidth: halfWidth })
+        }
+        else if (songImage.length == 1 && !ptSongImage) {
+            // 无协力歌曲时保持原版全宽
+            songsRow = drawListMerge(songImage, widthMax, true, "bottom")
+        }
+        else if (songImage.length == 1) {
+            songsRow = drawListMerge(songImage, halfWidth, true, "bottom")
+        }
+        else {
+            // 多首歌：合并后按需缩放 (仅在并排显示协力歌曲时缩至半宽)
+            const merged = drawListMerge(songImage, widthMax, true, "bottom")
+            songsRow = ptSongImage ? resizeImage({ image: merged, widthMax: halfWidth }) : merged
+        }
+        const selectBlock = drawDatablock({
+            topLeftText: '选择歌曲',
+            list: [songsRow]
+        })
+        if (ptSongImage) {
+            const ptSongBlock = drawDatablock({
+                topLeftText: '协力歌曲',
+                list: [drawListMerge([ptSongImage], halfWidth, true, "bottom")]
+            })
+            all.push(stackImageHorizontal([selectBlock, ptSongBlock]))
+        }
+        else {
+            all.push(selectBlock)
+        }
+    }
+    else if (ptSongImage) {
+        // 其他活动类型: 只显示协力歌曲
+        all.push(drawDatablock({
+            topLeftText: '协力歌曲',
+            list: [drawListMerge([ptSongImage], widthMax, true, "bottom")]
+        }))
+    }
 
     //卡牌列表
     const cardIconList = []
@@ -359,6 +418,7 @@ export async function drawTeamBuildDetail(player: playerDetail, server: Server, 
         text: 'Event',
         compress: compress,
     })
+
 
     return [buffer];
 }

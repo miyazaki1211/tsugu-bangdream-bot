@@ -15,8 +15,18 @@ import { globalDefaultServer, serverNameFullList } from '@/config';
 import { formatSeconds } from '@/components/list/time'
 import { drawDifficulityListWithNotes } from '@/components/list/difficulty';
 
-export async function drawSongDetail(song: Song, displayedServerList: Server[] = globalDefaultServer, compress: boolean): Promise<Array<Buffer | string>> {
-    if (song.isExist == false) {
+//查曲的meta基准技能规则: 有Fever使用150%加成, 无Fever使用130%加成, 技能持续7秒
+const metaRuleList = [
+    { fever: true, scoreUpMaxValue: 150 },
+    { fever: false, scoreUpMaxValue: 130 },
+]
+const metaSkillDuration = 7
+
+function metaRuleText(fever: boolean, scoreUpMaxValue: number): string {
+    return `${fever ? 'Fever' : '无Fever'} ${scoreUpMaxValue}% ${metaSkillDuration}秒`
+}
+
+export async function drawSongDetail(song: Song, displayedServerList: Server[] = globalDefaultServer, compress: boolean): Promise<Array<Buffer | string>> {    if (song.isExist == false) {
         return ['错误: 歌曲不存在']
     }
     await song.initFull()
@@ -119,10 +129,9 @@ export async function drawSongDetail(song: Song, displayedServerList: Server[] =
     all.push(listImage)
 
     //歌曲meta数据
-    var ferverStatusList = [true, false]
-    for (let j = 0; j < ferverStatusList.length; j++) {
-        const feverStatus = ferverStatusList[j];
-        var songMetaListDataBlockImage = await drawSongMetaListDataBlock(feverStatus, song, `${feverStatus ? 'Fever' : '无Fever'}`, displayedServerList)
+    for (let j = 0; j < metaRuleList.length; j++) {
+        const { fever, scoreUpMaxValue } = metaRuleList[j];
+        var songMetaListDataBlockImage = await drawSongMetaListDataBlock(fever, song, metaRuleText(fever, scoreUpMaxValue), displayedServerList, scoreUpMaxValue)
         all.push(songMetaListDataBlockImage)
     }
 

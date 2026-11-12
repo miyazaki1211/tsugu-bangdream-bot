@@ -35,10 +35,10 @@ export function tierListOfServerToString(): string {
     return tierListString
 }
 
-//判断左侧5个或者6个是否为数字
+//判断开头是否为恰好5个或6个数字（第7位不能也是数字）
 export function checkLeftDigits(str: string): number {
-    const regexSixDigits = /^(\d{6})/;
-    const regexFiveDigits = /^(\d{5})/;
+    const regexSixDigits = /^(\d{6})(?!\d)/;
+    const regexFiveDigits = /^(\d{5})(?!\d)/;
 
     const sixDigitsMatch = str.match(regexSixDigits);
     if (sixDigitsMatch) {

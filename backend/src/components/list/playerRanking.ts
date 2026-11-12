@@ -51,14 +51,24 @@ export async function drawPlayerRankingInList(user: User, backgroudColor: string
         ctx.drawImage(rankingImage, 12, 45);
     }
 
-    //头像
-    var headShotImage = await drawCardIcon({
-        card: new Card(user.sid),
-        trainingStatus: user.strained == 0 ? false : true,
-        cardIdVisible: false,
-        skillTypeVisible: false,
-        cardTypeVisible: false
-    });
+    //头像: 卡片数据不存在时(如玩家资料未公开/代表卡异常), 绘制灰色占位块避免渲染中断
+    var headShotImage: Canvas
+    const avatarCard = new Card(user.sid)
+    if (avatarCard.isExist) {
+        headShotImage = await drawCardIcon({
+            card: avatarCard,
+            trainingStatus: user.strained == 0 ? false : true,
+            cardIdVisible: false,
+            skillTypeVisible: false,
+            cardTypeVisible: false
+        });
+    }
+    else {
+        headShotImage = new Canvas(90, 90)
+        const headShotCtx = headShotImage.getContext('2d')
+        headShotCtx.fillStyle = '#d0d0d0'
+        headShotCtx.fillRect(0, 0, 90, 90)
+    }
     ctx.drawImage(headShotImage, 85, 10, 90, 90);
 
     //玩家昵称
@@ -69,9 +79,13 @@ export async function drawPlayerRankingInList(user: User, backgroudColor: string
     });
     ctx.drawImage(playerNameImage, 210, 10);
 
-    //牌子
+    //牌子: 牌子数据不存在时跳过
     for (let i = 0; i < user.degrees.length; i++) {
-        var degreeImage = await drawDegree(new Degree(user.degrees[i]), server);
+        const degree = new Degree(user.degrees[i])
+        if (!degree.isExist) {
+            continue
+        }
+        var degreeImage = await drawDegree(degree, server);
         ctx.drawImage(degreeImage, 210 + (degreeImage.width / 2 + 10) * i, 46, degreeImage.width / 2, degreeImage.height / 2);
     }
 

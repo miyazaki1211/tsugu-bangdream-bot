@@ -114,6 +114,10 @@ export async function drawCardIcon({
         var skill = new Skill(card.skillId)
         var skillTypeIcon = await drawCardIconSkill(skill)
         ctx.drawImage(skillTypeIcon, 180 - skillTypeIcon.width, 142)
+        //渲染技能等级时，若卡牌类型可见，将类型图标补画在最下方技能加成图标的左侧 (图标35x39, 垂直居中后整体再上移8px避免溢出图片下边缘)
+        if (skillLevel != undefined && cardTypeVisible && cardTypeIconList[card.type] != undefined) {
+            ctx.drawImage(cardTypeIconList[card.type], 180 - skillTypeIcon.width - 35 - 4, 142 + (skillTypeIcon.height - 39) / 2 - 8)
+        }
     }
     //获得框
     var Frame = await getCardIconFrame(card.rarity, card.attribute)
@@ -140,16 +144,18 @@ export async function drawCardIcon({
 interface drawCardIllustrationOptions {
     card: Card
     trainingStatus: boolean,
-    isList?: boolean
+    isList?: boolean,
+    illustrationImage?: Image
 }
 //画卡插画
 export async function drawCardIllustration({
     card,
     trainingStatus,
     isList = false,
+    illustrationImage,
 }: drawCardIllustrationOptions): Promise<Canvas> {
     trainingStatus = card.ableToTraining(trainingStatus)
-    var CardIllustrationImage = await card.getCardIllustrationImage(trainingStatus)
+    var CardIllustrationImage = illustrationImage ?? await card.getCardIllustrationImage(trainingStatus)
     const canvas = new Canvas(1360, 905)
     var ctx = canvas.getContext("2d")
     //将cardIllustration等比例缩放至宽度为1334

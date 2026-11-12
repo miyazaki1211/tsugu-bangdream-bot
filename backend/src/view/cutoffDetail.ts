@@ -13,7 +13,7 @@ import { drawEventDatablock } from '@/components/dataBlock/event';
 import { statusName } from '@/config';
 import { loadImageFromPath } from '@/image/utils';
 import mainAPI from '@/types/_Main';
-import { calculateCurrentHourlyRate } from '@/utils/cutoffRate';
+import { getSpeedParams, getTwoHourSpeed } from '@/components/utils';
 
 export async function drawCutoffDetail(eventId: number, tier: number, mainServer: Server, compress: boolean): Promise<Array<Buffer | string>> {
     if (!mainAPI['events'][`${eventId}`]['endAt'][mainServer]) return [`错误: ${serverNameFullList[mainServer]} 活动不存在或未举办`]
@@ -50,7 +50,9 @@ export async function drawCutoffDetail(eventId: number, tier: number, mainServer
 
         //预测线和时速
         const cutoffs = cutoff.cutoffs
-        const currentHourlyRate = calculateCurrentHourlyRate(cutoffs)
+        const { lastep, timeSpanHours, windowMinutes } = getSpeedParams(cutoffs, cutoff.startAt)
+        const currentHourlyRate = (cutoff.latestCutoff.ep - lastep) / timeSpanHours
+        const twoHourSpeed = getTwoHourSpeed(cutoffs)
         list.push(drawListMerge([
             drawList({
                 key: '预测线',
@@ -58,8 +60,8 @@ export async function drawCutoffDetail(eventId: number, tier: number, mainServer
             }),
 
             drawList({
-                key: '当前时速',
-                text: currentHourlyRate == null ? '?' : `${Math.round(currentHourlyRate)} pt/h`
+                key: `近${Math.round(windowMinutes)}分钟/2小时时速`,
+                text: `${Math.round(currentHourlyRate)}/${twoHourSpeed == null ? '数据不足' : Math.round(twoHourSpeed)} pt/h`
             })
         ]))
         list.push(line)

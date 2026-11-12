@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { tsuguUser } from '../config';
 import { Logger } from 'koishi'
+import { API_TIMEOUT } from './axiosTimeout'
 export const remoteDBLogger = new Logger('tsugu-remoteDB');
 
 const statusCodeList = [200, 409, 422]
@@ -11,6 +12,14 @@ function parseError(e: any): { status: string; data: string; } {
         return {
             status: 'fail',
             data: '错误: 远程服务器未启用数据库'
+        }
+    }
+    //无 HTTP 响应说明连接层失败(后端崩溃/网络不通), 单独标记状态供调用方区分处理
+    if (!e.response) {
+        remoteDBLogger.error(e.message)
+        return {
+            status: 'unreachable',
+            data: '错误: 远程服务器未知错误\n或无法连接至服务器'
         }
     }
     remoteDBLogger.error(e.response)
@@ -25,7 +34,7 @@ export async function getRemoteDBUserData(RemoteDBUrl: string, platform: string,
         const postPath = '/user/getUserData';
         const postData = { platform, userId };
         remoteDBLogger.info(`${RemoteDBUrl}${postPath}`, postData);
-        const result = await axios.post(`${RemoteDBUrl}${postPath}`, postData);
+        const result = await axios.post(`${RemoteDBUrl}${postPath}`, postData, { timeout: API_TIMEOUT });
         if (!statusCodeList.includes(result.status)) {
             throw new Error()
         }
@@ -41,7 +50,7 @@ export async function changeUserData(RemoteDBUrl: string, platform: string, user
         const postPath = '/user/changeUserData';
         const postData = { platform, userId, update }
         remoteDBLogger.info(`${RemoteDBUrl}${postPath}`, postData);
-        const result = await axios.post(`${RemoteDBUrl}${postPath}`, postData);
+        const result = await axios.post(`${RemoteDBUrl}${postPath}`, postData, { timeout: API_TIMEOUT });
         if (!statusCodeList.includes(result.status)) {
             throw new Error()
         }
@@ -58,7 +67,7 @@ export async function bindPlayerRequest(RemoteDBUrl: string, platform: string, u
         const postPath = '/user/bindPlayerRequest';
         const postData = { platform, userId }
         remoteDBLogger.info(`${RemoteDBUrl}${postPath}`, postData);
-        const result = await axios.post(`${RemoteDBUrl}${postPath}`, postData);
+        const result = await axios.post(`${RemoteDBUrl}${postPath}`, postData, { timeout: API_TIMEOUT });
         if (!statusCodeList.includes(result.status)) {
             throw new Error()
         }
@@ -74,7 +83,7 @@ export async function bindPlayerVerify(RemoteDBUrl: string, platform: string, us
         const postPath = '/user/bindPlayerVerification';
         const postData = { platform, userId, server, playerId, bindingAction }
         remoteDBLogger.info(`${RemoteDBUrl}${postPath}`, postData);
-        const result = await axios.post(`${RemoteDBUrl}${postPath}`, postData);
+        const result = await axios.post(`${RemoteDBUrl}${postPath}`, postData, { timeout: API_TIMEOUT });
         if (!statusCodeList.includes(result.status)) {
             throw new Error()
         }

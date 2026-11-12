@@ -40,7 +40,7 @@ export class Room {
         this.avatarUrl = avatarUrl
         this.userName = userName
     }
-    setPlayer(player: Player) {
+    setPlayer(player: Pick<Player, 'playerId' | 'server'>) {
         this.player = {
             playerId: player.playerId,
             server: player.server
@@ -117,7 +117,25 @@ export async function queryAllRoom(): Promise<Room[]> {
 
 //从BandoriStation获取房间号
 export async function queryRoomNumberFromBandoriStation(): Promise<Room[]> {
-    const Data = await axios.default.post(BandoriStationurl, { function: 'query_room_number' })
+    const Data = await axios.default.get(`${BandoriStationurl}?function=query_room_number`, {
+        headers: {
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+            'Accept-Language': 'en,zh-CN;q=0.9,zh;q=0.8',
+            'Accept-Encoding': 'gzip, deflate',
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache',
+            'DNT': '1',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'none',
+            'Sec-Fetch-User': '?1',
+            'Upgrade-Insecure-Requests': '1',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36',
+            'sec-ch-ua': '"Chromium";v="152", "Not?A_Brand";v="24", "Google Chrome";v="152"',
+            'sec-ch-ua-mobile': '?0',
+            'sec-ch-ua-platform': '"Windows"'
+        }
+    })
     const response = Data.data?.response
     const roomList: Room[] = []
     for (let i = 0; i < response.length; i++) {
@@ -133,12 +151,11 @@ export async function queryRoomNumberFromBandoriStation(): Promise<Room[]> {
             avatarUrl: roomData['user_info']['avatar'] == '' ? undefined : `https://asset.bandoristation.com/images/user-avatar/${roomData['user_info']['avatar']}`
         })
         if (roomData['user_info']?.['bandori_player_brief_info']?.['user_id'] != undefined) {
-            const player = new Player(
-                roomData['user_info']['bandori_player_brief_info']['user_id'],
-                getServerByName(roomData['user_info']['bandori_player_brief_info']['server'])
-            )
-            await player.initFull()
-            room.setPlayer(player)
+            // brief_info 已含 playerId 和 server,无需 initFull() 拉取完整档案(每次都是真实网络请求,串行执行曾导致响应慢约5秒)
+            room.setPlayer({
+                playerId: roomData['user_info']['bandori_player_brief_info']['user_id'],
+                server: getServerByName(roomData['user_info']['bandori_player_brief_info']['server'])
+            })
         }
         roomList.push(room)
     }
@@ -160,7 +177,7 @@ export async function submitRoomNumber({ number, rawMessage, source, userId, tim
     const room = new Room({
         number: number,
         rawMessage: rawMessage,
-        source: source,
+        source: '椎名真白',
         userId: userId,
         time: time,
         userName: userName,
@@ -188,7 +205,7 @@ export async function submitRoomNumber({ number, rawMessage, source, userId, tim
             number: number,
             user_id: userId,
             raw_message: rawMessage,
-            source: 'Tsugu',
+            source: '椎名真白',
             token: bandoriStationToken
         }
         try {

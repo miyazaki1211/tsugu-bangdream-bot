@@ -1,6 +1,6 @@
 import { Event } from '@/types/Event';
 import { statSum } from '@/types/Card'
-import { drawList, drawListMerge, drawListTextWithImages } from '@/components/list';
+import { drawList, drawListMerge, drawListTextWithImages, drawBandItemContent, drawAttributeItemContent } from '@/components/list';
 import { drawDottedLine } from '@/image/dottedLine'
 import { drawDatablock } from '@/components/dataBlock'
 import { Image, Canvas } from 'skia-canvas'
@@ -9,12 +9,9 @@ import { drawTitle } from '@/components/title'
 import { outputFinalBuffer } from '@/image/output'
 import { Song, getPresentSongList } from '@/types/Song'
 import { drawSongInListMid } from '@/components/list/song';
-import { resizeImage, stackImage } from '@/components/utils';
+import { stackImage } from '@/components/utils';
 import { drawCardIcon } from '@/components/card'
-import { drawText } from '@/image/text';
 import { AreaItemType } from '@/types/AreaItem';
-import { Band } from '@/types/Band';
-import { Attribute } from '@/types/Attribute'
 import { buildResult } from '@/types/BuildTypes';
 
 export async function drawResult(data: buildResult, eventId: number, useEasyBG: boolean, compress: boolean) {
@@ -47,23 +44,11 @@ export async function drawResult(data: buildResult, eventId: number, useEasyBG: 
         list.push(line)
         const bandId = data.item[AreaItemType.band], bandItemImage = drawListTextWithImages({
             key: '乐队道具',
-            content: [bandId == '1000' ? drawText({
-                text: '全部乐队',
-                maxWidth: width
-            }) : resizeImage({
-                image: await (new Band(parseInt(bandId))).getLogo(),
-                heightMax: 80
-            })]
+            content: await drawBandItemContent(bandId)
         })
         const attribute = data.item[AreaItemType.attribute], attributeItemImage = drawListTextWithImages({
             key: '颜色道具',
-            content: [attribute == '~all' ? drawText({
-                text: '全部颜色',
-                maxWidth: width
-            }) : resizeImage({
-                image: await (new Attribute(attribute)).getIcon(),
-                heightMax: 40
-            })],
+            content: await drawAttributeItemContent(attribute),
             lineSpacing: 40,
         })
         const stat = data.item[AreaItemType.magazine], magazineItemImage = drawList({

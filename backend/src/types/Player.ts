@@ -1,5 +1,4 @@
-import { callAPIAndCacheResponse } from '@/api/getApi';
-import { Bestdoriurl } from '@/config';
+import { fetchPlayerDataPreferLocal } from '@/api/playerSource';
 import { Server } from '@/types/Server'
 import { Card, addStat, Stat } from '@/types/Card'
 import { AreaItem } from '@/types/AreaItem';
@@ -101,7 +100,8 @@ export class Player {
             member4: number;
             deckType: string;
         };
-        userProfileSituation: {
+        //上游可能不返回该字段（玩家未设置代表卡），为空或缺失时按编队队长处理
+        userProfileSituation?: {
             userId: string;
             situationId: number;
             illust: 'after_training' | 'normal';
@@ -188,9 +188,9 @@ export class Player {
         var cacheTime = useCache ? 1 / 0 : 0;
 
         try {
-            var playerData = await callAPIAndCacheResponse(`${Bestdoriurl}/api/player/${Server[this.server]}/${this.playerId}?mode=${mode}`, cacheTime, 1);
+            var playerData = await fetchPlayerDataPreferLocal(this.server, this.playerId, mode, cacheTime);
             if (mode == 1 && !isFinite(cacheTime)){ // 后台更新玩家信息，确保下一次用最新的缓存去显示
-                callAPIAndCacheResponse(`${Bestdoriurl}/api/player/${Server[this.server]}/${this.playerId}?mode=${mode}`, 300, 1).catch(err => {
+                fetchPlayerDataPreferLocal(this.server, this.playerId, mode, 300).catch(err => {
                     logger('InitPlayer',err);
                 });;
             }
@@ -375,7 +375,7 @@ export class Player {
         let illustCardId: number
         let trainingStatus: boolean
         let viewProfileSituationStatus: string
-        if (Object.keys(this.profile.userProfileSituation).length != 0) {
+        if (this.profile.userProfileSituation != undefined && Object.keys(this.profile.userProfileSituation).length != 0) {
             viewProfileSituationStatus = this.profile.userProfileSituation.viewProfileSituationStatus
         }
         else {

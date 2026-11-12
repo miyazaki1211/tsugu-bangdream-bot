@@ -27,7 +27,8 @@ export async function drawEventStage(eventId: number, index: number, date: Date,
     }
 
     var all = []
-    all.push(drawTitle('查试炼', `国服 ID:${eventId} 活动试炼`))
+    //查试炼的meta基准技能: 满级技能100%加成, 持续7秒(calcMeta默认值)
+    all.push(drawTitle('查试炼', `国服 ID:${eventId} 活动试炼`, '基准技能: 满级 100% 7秒'))
 
     //获得活动stage列表
     var stageList = eventStage.getStageList()

@@ -1,6 +1,6 @@
 import { Canvas, Image } from 'skia-canvas';
 import { CreateBG, CreateBGEazy } from '@/image/BG';
-import { assetsRootPath } from '@/config';
+import { assetsRootPath, imageCompressQuality } from '@/config';
 import * as path from 'path';
 import { loadImageFromPath } from '@/image/utils';
 import { releaseCanvas } from '@/components/utils';
@@ -105,7 +105,7 @@ export var outputFinalBuffer = async function ({
         })
         var tempBuffer: Buffer
         if (compress != undefined && compress) {
-            tempBuffer = await tempcanv.toBuffer('jpeg', { quality: 0.7 })
+            tempBuffer = await tempcanv.toBuffer('jpeg', { quality: imageCompressQuality })
         }
         else {
             tempBuffer = await tempcanv.toBuffer('png')

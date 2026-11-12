@@ -9,7 +9,7 @@ import express from 'express';
 import { body } from 'express-validator'; // Import express-validator functions
 import { middleware } from '@/routers/middleware';
 import { Request, Response } from 'express';
-import { getPresentEvent } from '@/types/Event';
+import { Event, getPresentEvent } from '@/types/Event';
 import { buildResult, cardInfo } from "@/types/BuildTypes"
 import { AreaItemType } from "@/types/AreaItem";
 import { drawResult } from "@/view/calcResult";
@@ -125,7 +125,10 @@ async function requestRemoteCalcResult(
             playerId,
             server: Server[server],
             eventId: currentEvent,
-        }, { timeout: Number(process.env.BANGDREAM_OPTIMIZE_TIMEOUT_MS) || 60000 });
+        }, {
+            timeout: Number(process.env.BANGDREAM_OPTIMIZE_TIMEOUT_MS) || 300000, // 开始计算超时时间 5 分钟
+            proxy: false, // 禁用系统代理，确保直连 127.0.0.1:3100
+        });
     } catch (error) {
         if (axios.isAxiosError(error) && error.response) {
             const message = (error.response.data as Partial<ApiEnvelope>)?.message;
@@ -185,6 +188,14 @@ export async function commandCalcResult(playerId: number, mainServer: Server, us
     if (!currentEvent) {
         currentEvent = getPresentEvent(mainServer).eventId
     }
+    // 开始计算仅支持 对邦/组曲/CP 活动
+    const event = new Event(currentEvent)
+    if (!event.isExist) {
+        return [`错误：当前选择的是第${currentEvent}期活动，该活动不存在`]
+    }
+    if (!['versus', 'medley', 'challenge'].includes(event.eventType)) {
+        return [`错误：第${currentEvent}期活动（${event.getTypeName()}）不支持开始计算, 仅支持对邦/组曲/CP活动; 计算PT请用 PT计算; 切换活动请发送 组队计算 <活动ID>`]
+    }
     if (currentEvent != player.currentEvent) {
         player = await playerDB.updCurrentEvent(playerId, mainServer, currentEvent)
     }
@@ -192,7 +203,7 @@ export async function commandCalcResult(playerId: number, mainServer: Server, us
     if (!save) {
         save = false
     }
-    const output = [] 
+    const output = []
     try {
         const res: buildResult = await requestRemoteCalcResult(playerId, player, mainServer, currentEvent)
         if (save) {

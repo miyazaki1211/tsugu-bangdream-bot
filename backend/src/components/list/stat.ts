@@ -12,6 +12,11 @@ export const statConfig = {
 }
 
 export async function drawCardStatInList(card: Card) {
+    if (card.isStatPlaceholder()) {//Bestdori未收录该卡真实属性(如卡片创作活动卡),展示占位数值会严重失真
+        return drawList({
+            key: '综合力', text: '暂无数据'
+        })
+    }
     const stat = await card.calcStat()
     const limitBreakstat = limitBreakRankStat(card.rarity)
     const limitBreakstatTotal = limitBreakstat.performance + limitBreakstat.technique + limitBreakstat.visual

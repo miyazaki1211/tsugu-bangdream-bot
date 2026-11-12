@@ -2,7 +2,6 @@ import * as path from 'path';
 import { Server } from '@/types/Server';
 import { logger } from './logger';
 import * as dotenv from 'dotenv';
-import { parseRankingSources, resolveRankingSources } from '@/api/rankingSourceConfig';
 
 dotenv.config();
 
@@ -46,20 +45,31 @@ export var USE_HHWX_SOURCE_PREFER = false;   // 是否优先使用HHWX的Tracker
 export const STAR_VIEWER_Url: string = process.env.RANKING_API_BASE_URL || 'https://grp-speed-backend.starfreedomx.top';
 export var USE_STAR_VIEWER_SOURCE_PREFER = true;   // 是否优先使用STAR_VIEWER的Tracker数据
 
+export const LOCAL_RANKING_API_URL: string = process.env.LOCAL_RANKING_API_URL !== undefined ? process.env.LOCAL_RANKING_API_URL.trim() : 'http://127.0.0.1:5519';
+export var USE_LOCAL_RANKING_API = false;   // 本地数据源探测结果，探测成功后置为 true
+export function enableLocalRankingAPI() {
+    USE_LOCAL_RANKING_API = true;
+}
+
+// 压缩模式下图片输出的 JPEG 质量（0.1~1），由环境变量 IMAGE_COMPRESS_QUALITY 控制，默认 0.75
+const parsedImageCompressQuality: number = parseFloat(process.env.IMAGE_COMPRESS_QUALITY || '');
+export const imageCompressQuality: number = Number.isFinite(parsedImageCompressQuality) ? Math.min(Math.max(parsedImageCompressQuality, 0.1), 1) : 0.75;
+
+// STAR_VIEWER 数据源支持的档线列表, 不在此列表中的档线(如400)将直接跳过该数据源, 回退到下一数据源
+export const STAR_VIEWER_TIER_LIST: number[] = [20, 30, 40, 50, 100, 200, 300, 500, 1000, 1500, 2000, 3000, 4000, 5000, 10000, 20000, 30000, 40000, 50000, 100000];
+
 // ===== 数据源回退链配置 =====
-// 旧配置的地址别名；别名不决定接口类型，新配置可直接填写任意基础地址。
+// 数据源key → URL映射
 export const SOURCE_URL_MAP: Record<string, string> = {
+    "local_gs": LOCAL_RANKING_API_URL,
     "star_viewer": STAR_VIEWER_Url,
     "bestdori": Bestdoriurl,
     "hhwx": HHWX_Url
 };
 
-// 按服务器覆盖所有排名查询的地址列表；缺省时保留原有回退顺序。
-const rankingSourceOverrides = parseRankingSources(process.env.RANKING_SOURCES, SOURCE_URL_MAP);
-
 // 活动档线数据源回退链（按服务器，越靠前优先级越高）
 export const EVENTRANKING_TURNS: Record<string, string[]> = {
-    "cn": ["star_viewer", "bestdori", "hhwx"],
+    "cn": ["star_viewer", "hhwx", "bestdori"],
     "jp": ["star_viewer", "bestdori"],
     "default": ["bestdori"]
 };
@@ -79,9 +89,13 @@ export const MONTHRANKING_TURNS: Record<string, string[]> = {
     "default": ["star_viewer"]
 };
 
-// 统一解析：服务器专用列表 > 自定义 default > 各类排名的内置列表。
+// 统一解析：将server和turns配置转换为 {url, name} 数组
 export function resolveSourceUrls(server: string, turnsConfig: Record<string, string[]>): {url: string, name: string}[] {
-    return resolveRankingSources(server, turnsConfig, rankingSourceOverrides, SOURCE_URL_MAP);
+    let keys = turnsConfig[server] || turnsConfig["default"] || ["bestdori"];
+    if (USE_LOCAL_RANKING_API && LOCAL_RANKING_API_URL && (server === 'cn' || server === 'global')) {
+        keys = ['local_gs', ...keys.filter(key => key !== 'local_gs')];
+    }
+    return keys.map(key => ({ url: SOURCE_URL_MAP[key], name: key }));
 }
 
 const enableAutoTrackerDataSourceSwitch = true  // 是否开启数据源优先自动切换

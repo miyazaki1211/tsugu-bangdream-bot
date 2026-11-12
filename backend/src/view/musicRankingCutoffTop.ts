@@ -21,13 +21,19 @@ export async function drawMusicRankingCutoffTop(
     const musicRankingCutoffTop = new MusicRankingCutoffTop(eventId, mainServer, musicId);
     await musicRankingCutoffTop.initFull();
     if (!musicRankingCutoffTop.isExist) {
+        if (musicRankingCutoffTop.dataStatus === 'event_pt_fallback') {
+            return [`错误: ${serverNameFullList[mainServer]}活动${eventId} 没有该曲目的歌榜前十数据(数据源仅返回活动PT数据, 已拒绝显示)`];
+        }
         return [`错误: ${serverNameFullList[mainServer]} 歌榜不存在或数据不足`];
     }
 
     const all: Array<Canvas | Image> = [];
     all.push(drawTitle('档线', `${serverNameFullList[mainServer]} 歌榜 10档线`));
     all.push(await drawEventDatablock(musicRankingCutoffTop.event, [mainServer]));
-    all.push(drawDatablock({ list: [await drawSongInList(new Song(musicId))] }));
+    // 组曲活动的排名数据为全部曲目合计, 不展示单曲卡片
+    if (musicRankingCutoffTop.event.eventType !== 'medley') {
+        all.push(drawDatablock({ list: [await drawSongInList(new Song(musicId))] }));
+    }
 
     const list: Array<Image | Canvas> = [];
     const userInRankings = musicRankingCutoffTop.getLatestRanking();

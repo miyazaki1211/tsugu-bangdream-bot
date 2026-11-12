@@ -40,17 +40,15 @@ export async function drawTimeLineChart(
   const canvas = new Canvas(width, height);
   const ctx = canvas.getContext('2d');
 
-  // 8. 计算 y 轴最大值
-  const yMax = Math.max(
-    ...data.datasets.map((dataset: any) =>
-      Math.max(...dataset.data.map((pt: any) => pt.y))
-    )
-  );
-  const yMin = setYStartToZero ? 0 : Math.max(
-    ...data.datasets.map((dataset: any) =>
-      Math.min(...dataset.data.map((pt: any) => pt.y))
-    )
-  );
+  // 8. 计算 y 轴最大值（数据点可达数十万条，禁用展开传参 —— 会超出调用栈参数上限）
+  const yMax = data.datasets.reduce((max: number, dataset: any) => {
+    const datasetMax = dataset.data.reduce((acc: number, pt: any) => pt.y > acc ? pt.y : acc, -Infinity);
+    return datasetMax > max ? datasetMax : max;
+  }, -Infinity);
+  const yMin = setYStartToZero ? 0 : data.datasets.reduce((min: number, dataset: any) => {
+    const datasetMin = dataset.data.reduce((acc: number, pt: any) => pt.y < acc ? pt.y : acc, Infinity);
+    return datasetMin < min ? datasetMin : min;
+  }, Infinity);
   if (useSegmentDash) {
     const borderDash = (context: any) => {
       const diffHours = (context.p1.parsed.x - context.p0.parsed.x) / (1000 * 60 * 60)

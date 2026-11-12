@@ -161,6 +161,8 @@
 | `fuzzySearchResult` | FuzzySearchResult | - | 将要查询的查询模糊搜索过滤器。 |
 | `useEasyBG` | boolean | - | 是否使用简易背景。 `false` 即为不使用简易背景，此时后端图片生成耗时可能会大幅增加。 |
 | `compress` | boolean? | `false` | 是否在后端压缩图像，压缩图像可以加快传输速度，但是会降低图片清晰度。 |
+| `playerId` | number? | - | 执行指令的玩家所绑定的玩家ID。与 `playerServer` 同时提供且查询结果为卡牌列表时，列表中会在玩家已拥有的卡牌ID右侧绘制绿色圆形标记。另有与绑定无关的标记：日服已发布而国服未发布的卡牌，卡牌ID小于国服当前活动卡牌最大ID时为红色标记，大于时为灰色标记。 |
+| `playerServer` | Server | - | 执行指令的玩家所绑定的玩家所在服务器。与 `playerId` 同时提供时生效。 |
 
 #### 响应结构
 
@@ -281,6 +283,24 @@
 
 一个 [Response](#响应对象) 列表。
 
+### 微操计算
+
+计算绑定玩家在当前活动选定歌曲上的微操理论最高分，返回概要信息与微操谱面图。队伍来自 `/v1/calc-result` 计算结果，歌曲与难度来自玩家的「选择歌曲」设置（未设置时使用活动默认曲）。仅支持挑战（challenge）/ 对邦（versus）类型活动，其他类型返回错误提示。
+
+终结点: `POST /microOptimize`
+
+#### 请求结构
+
+| 字段名 | 数据类型 | 默认值 | 说明 |
+|:------:|:-------:|:-----:|:-----|
+| `playerId` | number | - | 绑定的玩家 ID 。 |
+| `mainServer` | [Server](#server-服务器) | - | 玩家的主服务器。 |
+| `compress` | boolean? | `false` | 是否在后端压缩图像，压缩图像可以加快传输速度，但是会降低图片清晰度。 |
+
+#### 响应结构
+
+一个 [Response](#响应对象) 列表。
+
 ### 查询歌曲分数表
 
 查询歌曲分数排行表。
@@ -293,6 +313,10 @@
 |:------:|:-------:|:-----:|:-----|
 | `displayedServerList` | [Server](#server-服务器)[] | - | 默认服务器列表，将会按顺序查询第一个有效的服务器。 |
 | `mainServer` | [Server](#server-服务器) | - | 要查询的主服务器。 |
+| `fever` | boolean? | `true` | 是否计算带 Fever 的分数。 |
+| `scoreUpMaxValue` | number? | `150`（无 Fever 时 `130`） | 技能倍率百分比，如技能为 150% 时传 `150`。默认值取决于 `fever`：带 Fever 为 `150`，无 Fever 为 `130`。 |
+| `skillDuration` | number? | `7` | 技能持续时间（秒），必须是 meta 数据中存在的值（如 `3`、`5`、`7` 等），否则返回错误提示。 |
+| `difficultyFilter` | string? | - | 难度过滤条件，格式为 `<N` 或 `>N`（如 `<26` 表示只展示难度低于 26 的曲目，`>20` 表示只展示难度高于 20 的曲目），数字为 0 到 100 之间的正数。仅过滤展示的曲目，不改变排名。 |
 | `compress` | boolean? | `false` | 是否在后端压缩图像，压缩图像可以加快传输速度，但是会降低图片清晰度。 |
 
 #### 响应结构
@@ -336,6 +360,175 @@
 
 一个 [Response](#响应对象) 列表。
 
+### 查询国服活动日历
+
+查询国服活动日历图片，包含活动档期（官方公布与 HHWX 预测）、节假日休/班安排。日历仅覆盖国服。
+
+终结点: `POST /calendar`
+
+#### 请求结构
+
+| 字段名 | 数据类型 | 默认值 | 说明 |
+|:------:|:-------:|:-----:|:-----|
+| `year` | number? | 当年 | 日历年份（国服时区）。 |
+| `month` | number? | 当月 | 日历月份（1-12，国服时区）。 |
+| `compress` | boolean? | `false` | 是否在后端压缩图像，压缩图像可以加快传输速度，但是会降低图片清晰度。 |
+
+#### 响应结构
+
+一个 [Response](#响应对象) 列表。
+
+### 查询月榜前十车速排名
+
+查询月榜前十玩家的分速排名图片。月榜数据经排名数据源链获取，国服优先使用本地 GarupaSpeedTracker 数据源（`LOCAL_RANKING_API_URL`，默认 `http://127.0.0.1:5519`，探测可用时自动启用）。
+
+终结点: `POST /monthlyTopRateRanking`
+
+#### 请求结构
+
+| 字段名 | 数据类型 | 默认值 | 说明 |
+|:------:|:-------:|:-----:|:-----|
+| `mainServer` | [Server](#server-服务器) | - | 主服务器。 |
+| `monthlyRankingId` | number? | 当前月榜 | 月榜 ID 。省略时根据 `date` （省略则为当前时间）自动解析对应期月榜。 |
+| `length` | number? | `60` | 统计时间范围（分钟）。 |
+| `date` | number? | 当前时间 | 指定结束时间（毫秒时间戳）。 |
+| `compareTier` | number? | - | 对比玩家的排名（1-10）。 |
+| `compareUid` | number? | - | 对比玩家的 UID 。 |
+| `compress` | boolean? | `false` | 是否在后端压缩图像，压缩图像可以加快传输速度，但是会降低图片清晰度。 |
+
+#### 响应结构
+
+一个 [Response](#响应对象) 列表。
+
+### 查询月榜前十分速表
+
+查询月榜前十玩家的分速表图片，可显示时间范围内出现过分变动的全部玩家。
+
+终结点: `POST /monthlyTopTenMinuteSpeed`
+
+#### 请求结构
+
+| 字段名 | 数据类型 | 默认值 | 说明 |
+|:------:|:-------:|:-----:|:-----|
+| `mainServer` | [Server](#server-服务器) | - | 主服务器。 |
+| `monthlyRankingId` | number? | 当前月榜 | 月榜 ID 。省略时根据 `date` （省略则为当前时间）自动解析对应期月榜。 |
+| `time` | number? | `60` | 统计时间范围（分钟）。 |
+| `date` | number? | 当前时间 | 指定结束时间（毫秒时间戳）。 |
+| `allPlayer` | boolean? | `false` | 是否显示时间范围内的全部玩家（榜外玩家加括号显示）。 |
+| `compress` | boolean? | `false` | 是否在后端压缩图像，压缩图像可以加快传输速度，但是会降低图片清晰度。 |
+
+#### 响应结构
+
+一个 [Response](#响应对象) 列表。
+
+### 查询月榜玩家分数散点图
+
+查询月榜前十指定玩家的单把出分散点图与数据特征分析图片。
+
+终结点: `POST /monthlyTopPointStat`
+
+#### 请求结构
+
+| 字段名 | 数据类型 | 默认值 | 说明 |
+|:------:|:-------:|:-----:|:-----|
+| `mainServer` | [Server](#server-服务器) | - | 主服务器。 |
+| `monthlyRankingId` | number? | 当前月榜 | 月榜 ID 。 |
+| `playerId` | number? | - | 玩家 UID 。与 `tier` 至少提供一个。 |
+| `tier` | number? | - | 玩家排名（1-10）。与 `playerId` 至少提供一个。 |
+| `limit` | string? | - | 分数过滤条件，如 `>10000` 、 `<=20000` 、 `10000-20000` 。 |
+| `compress` | boolean? | `false` | 是否在后端压缩图像，压缩图像可以加快传输速度，但是会降低图片清晰度。 |
+
+#### 响应结构
+
+一个 [Response](#响应对象) 列表。
+
+### 查询月榜玩家分数变化（月榜查岗）
+
+查询月榜前十指定玩家的近期分数变化与统计数据图片。
+
+终结点: `POST /monthlyTopRateDetail`
+
+#### 请求结构
+
+| 字段名 | 数据类型 | 默认值 | 说明 |
+|:------:|:-------:|:-----:|:-----|
+| `mainServer` | [Server](#server-服务器) | - | 主服务器。 |
+| `monthlyRankingId` | number? | 当前月榜 | 月榜 ID 。 |
+| `playerId` | number? | - | 玩家 UID 。与 `tier` 至少提供一个。 |
+| `tier` | number? | - | 玩家排名（1-10）。与 `playerId` 至少提供一个。 |
+| `day` | number? | - | 指定月榜第几天的分数变动详情。 |
+| `limit` | string? | - | 分数过滤条件，如 `>10000` 、 `<=20000` 、 `10000-20000` 。 |
+| `count` | number? | `20` | 显示最近的几次分数变化。 |
+| `compress` | boolean? | `false` | 是否在后端压缩图像，压缩图像可以加快传输速度，但是会降低图片清晰度。 |
+
+#### 响应结构
+
+一个 [Response](#响应对象) 列表。
+
+### 记录结榜成绩
+
+记录群内玩家的国服活动结榜成绩（PT 榜或歌榜），供生成结榜图使用。后端按"最近一个已结束的国服活动"归档，仅允许在活动结束后至结束日期+3天 24:00（北京时间）内记录。记录时后端按 `uid` 拉取玩家资料快照（昵称/等级/签名/头像/牌子），`signature` 提供时覆盖签名。同一玩家 PT 榜与歌榜成绩合并在同一条记录中，重复提交覆盖更新。数据存储于 MongoDB（`finalRankings` 集合，`tsugu-bangdream-bot` 库），接口不依赖 `LOCAL_DB` 开关。
+
+终结点: `POST /finalRanking/submit`
+
+#### 请求结构
+
+| 字段名 | 数据类型 | 默认值 | 说明 |
+|:------:|:-------:|:-----:|:-----|
+| `platform` | string | - | 前端平台标识。 |
+| `groupId` | string | - | 群号。 |
+| `type` | string | - | `event` 表示 PT 榜，`music` 表示歌榜。 |
+| `uid` | number | - | 国服玩家 ID 。 |
+| `ranking` | number | - | 排名。 |
+| `pt` | number? | - | `type` 为 `event` 时的 PT ，必填。 |
+| `score` | number? | - | `type` 为 `music` 时的分数，必填。 |
+| `songIndex` | number? | `1` | 第几首歌，仅挑战(CP)活动有效，组曲/对邦活动忽略。 |
+| `signature` | string? | - | 自定义签名，覆盖玩家当前签名显示。 |
+| `groupName` | string? | - | 群名称，存储用于渲染兜底。 |
+| `recordedBy` | string? | - | 记录者标识（审计用）。 |
+
+#### 响应结构
+
+一个 [Response](#响应对象) 列表（确认文本）。
+
+### 查询结榜图
+
+生成指定群的国服活动结榜图片，PT 榜与歌榜均按排名排序，歌榜在 PT 榜下方，标题处显示群名称与群号。
+
+终结点: `POST /finalRanking/query`
+
+#### 请求结构
+
+| 字段名 | 数据类型 | 默认值 | 说明 |
+|:------:|:-------:|:-----:|:-----|
+| `platform` | string | - | 前端平台标识。 |
+| `groupId` | string | - | 群号。 |
+| `eventId` | number? | 本群最新有记录的一期 | 指定活动 ID ，可查询往期结榜图。 |
+| `groupName` | string? | 数据库快照 | 群名称，用于标题显示。 |
+| `useEasyBG` | boolean | - | 是否使用简易背景。 |
+
+#### 响应结构
+
+一个 [Response](#响应对象) 列表。（图片恒定输出 PNG 不压缩，不受压缩配置影响）
+
+### 删除结榜数据
+
+删除指定群最新有记录的一期活动中该玩家的结榜数据（前端应自行校验仅群主/管理员可调用）。
+
+终结点: `POST /finalRanking/delete`
+
+#### 请求结构
+
+| 字段名 | 数据类型 | 默认值 | 说明 |
+|:------:|:-------:|:-----:|:-----|
+| `platform` | string | - | 前端平台标识。 |
+| `groupId` | string | - | 群号。 |
+| `uid` | number | - | 国服玩家 ID 。 |
+
+#### 响应结构
+
+一个 [Response](#响应对象) 列表（确认文本）。
+
 ## 用户数据 API
 
 进行用户数据获取和用户绑定的 API 。所有的 API 都有一个统一的 `/user` 终结点前缀。
@@ -372,6 +565,9 @@
 | `mainServer` | [Server](#serverid-服务器-id) | 用户的主服务器模式。 |
 | `displayedServerList` | [Server](#serverid-服务器-id)[] | 用户的默认服务器列表。 |
 | `shareRoomNumber` | boolean | 是否转发该用户的房间号。 `false` 则会忽视来自该用户的房间号。 |
+| `tokenPlatform` | string? | 凭据对应的登录平台（ `ios` / `android` ），由数据源自动探测后回写。 |
+| `channelUid` | string? | B站渠道登录凭据（扫码登录获得）：B站用户 mid，与 `channelToken` 成对。 |
+| `channelToken` | string? | B站渠道登录凭据（扫码登录获得）：access_token。 |
 | `userPlayerList` | [tsuguUserServerInList](#tsuguuserserverinlist-服务器绑定数据)[] | 该用户绑定的服务器数据列表 |
 
 ##### tsuguUserServerInList 服务器绑定数据
@@ -473,6 +669,73 @@
 |:------:|:-------:|:-------:|:-----|
 | `status` | string | `success` / `failed` | 后端是否成功处理请求。 |
 | `data` | string | - | 后端响应结果。若 `status` 为 `success` 则该字段为成功信息，为 `failed` 则为错误原因。 |
+
+### 设置令牌（B站扫码登录）
+
+通过哔哩哔哩APP扫码获取本人渠道凭据（ `channelUid` + `channelToken` ），供 导入全部配置/查PT 等指令使用。接口挂载于 `/user/qrcodeLogin` 前缀，同 `/user` 受 `LOCAL_DB` 开关控制。
+
+#### 第一步：申请二维码
+
+终结点: `POST /user/qrcodeLogin/start`
+
+##### 请求结构
+
+| 字段名 | 数据类型 | 默认值 | 说明 |
+|:------:|:-------:|:-----:|:-----|
+| `platform` | string | - | 用户的平台名称。 |
+| `userId` | string | - | 用户的 ID 。 |
+
+同一用户 10 秒内重复调用会返回 `429`。
+
+##### 响应结构
+
+| 字段名 | 数据类型 | 可能的值 | 说明 |
+|:------:|:-------:|:-------:|:-----|
+| `status` | string | `success` / `failed` | 后端是否成功处理请求。 |
+| `data.qrBase64` | string | - | 登录二维码 PNG 图片的 Base64 字符串。 |
+| `data.expiresIn` | number | `180` | 二维码有效期（秒）。 |
+| `data.gen` | number | - | 本次登录任务的代数，轮询时需原样传回。 |
+
+#### 第二步：轮询扫码状态
+
+终结点: `POST /user/qrcodeLogin/poll`
+
+##### 请求结构
+
+| 字段名 | 数据类型 | 默认值 | 说明 |
+|:------:|:-------:|:-----:|:-----|
+| `platform` | string | - | 用户的平台名称。 |
+| `userId` | string | - | 用户的 ID 。 |
+| `gen` | number | - | start 返回的代数；不匹配时视为过期。 |
+
+建议 2.5 秒轮询一次；后端对B站接口做了 1.5 秒限速，窗口内的调用直接返回上次状态。
+
+##### 响应结构
+
+| 字段名 | 数据类型 | 可能的值 | 说明 |
+|:------:|:-------:|:-------:|:-----|
+| `status` | string | `success` / `failed` | 后端是否成功处理请求。 |
+| `data.state` | string | `pending` / `scanned` / `success` / `expired` | `pending` 未扫码；`scanned` 已扫码未确认；`success` 已确认并落库；`expired` 二维码过期或任务不存在。 |
+| `data.channelUid` | string? | - | 仅 `state` 为 `success` 时返回（B站用户 mid）。 |
+
+`state` 为 `success` 时后端已将 `channelUid` / `channelToken` 写入用户数据，无需再调用其它接口保存。
+
+### 删除令牌
+
+清空指定用户的本人凭据（ `channelUid` / `channelToken` / `tokenPlatform` ）。
+
+终结点: `POST /user/qrcodeLogin/delete`
+
+#### 请求结构
+
+| 字段名 | 数据类型 | 默认值 | 说明 |
+|:------:|:-------:|:-----:|:-----|
+| `platform` | string | - | 用户的平台名称。 |
+| `userId` | string | - | 用户的 ID 。 |
+
+#### 响应结构
+
+一个 [Response](#响应对象) 列表（成功为 `令牌已删除` 文本）。
 
 ## 车站 API
 

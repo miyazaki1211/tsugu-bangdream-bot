@@ -1,6 +1,8 @@
 import { getJsonAndSave } from '@/api/downloader';
 import { getCacheDirectory, getFileNameFromUrl } from '@/api/utils';
 import { logger } from '@/logger';
+import * as fs from 'fs';
+import * as path from 'path';
 
 async function callAPIAndCacheResponse(url: string, cacheTime: number = 0, retryCount: number = 3): Promise<object> {
   if (url.includes('hhwx.org/api/tracker/data')) {
@@ -21,10 +23,17 @@ async function callAPIAndCacheResponse(url: string, cacheTime: number = 0, retry
       }
       logger(`API`, `Failed to get JSON from "${url}" on attempt ${attempt + 1}. Error: ${e.message}`);
       if (attempt === retryCount - 1) {
-        throw e; // Rethrow the error if all retries fail
+        try {
+          const cachedData = fs.readFileSync(path.join(cacheDir, fileName), 'utf-8');
+          logger(`API`, `All attempts failed for "${url}". Falling back to stale cache.`);
+          return JSON.parse(cachedData);
+        } catch (cacheErr) {
+          throw e; // 无缓存可用时抛出原始错误
+        }
       }
-      //等待3秒后重试
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      //指数退避重试：500ms → 1s → 2s
+      const delay = Math.min(2000, 500 * Math.pow(2, attempt));
+      await new Promise(resolve => setTimeout(resolve, delay));
     }
   }
   throw new Error(`Failed to get JSON from "${url}" after ${retryCount} attempts`);

@@ -4,8 +4,6 @@ import { predict } from '@/api/cutoff.cjs'
 import { getDateByServerTimezone, getServerUtcOffset, normalizeTimestamp } from '@/components/list/time';
 import { MONTHRANKING_TURNS } from '@/config';
 import { callRankingSources } from '@/api/rankingSources';
-import { getTopRankingData } from '@/api/topRanking';
-import { TopSnapshot, rankingAt, topUsers } from '@/types/TopRanking';
 
 type MonthlyRankingBorderPoint = {
     time: number;
@@ -15,6 +13,28 @@ type MonthlyRankingBorderPoint = {
 type MonthlyRankingBorderResponse = {
     result: boolean;
     cutoffs: MonthlyRankingBorderPoint[];
+};
+
+type MonthlyRankingTopPoint = {
+    timestamp?: number;
+    time?: number;
+    uid: number;
+    value: number;
+};
+
+type MonthlyRankingPlayer = {
+    uid: number;
+    name: string;
+    introduction: string;
+    rank: number;
+    sid: number;
+    strained: number;
+    degrees: number[];
+};
+
+type MonthlyRankingTopResponse = {
+    points: MonthlyRankingTopPoint[];
+    users: MonthlyRankingPlayer[];
 };
 
 export class MonthlyRankingCutoff {
@@ -432,7 +452,6 @@ export class MonthlyRankingCutoffTop {
         uid: number,
         value: number
     }[];
-    snapshots: TopSnapshot[] = [];
     users: {
         uid: number,
         name: string,
@@ -481,16 +500,40 @@ export class MonthlyRankingCutoffTop {
         if (!this.isExist || this.isInitfull) {
             return;
         }
-        const topData = await getTopRankingData(this.server, MONTHRANKING_TURNS, 'monthly', this.monthlyRankingId,
-            `/api/monthlyRanking/top?server=${this.server}&monthlyId=${this.monthlyRankingId}`);
+        const topData = await callRankingSources<MonthlyRankingTopResponse>(
+            this.server,
+            MONTHRANKING_TURNS,
+            `/api/monthlyRanking/top?server=${<number>this.server}&monthlyId=${this.monthlyRankingId}`,
+        );
         if (topData == undefined) {
             this.isExist = false;
             return;
         }
-        this.points = topData.points;
-        this.snapshots = topData.snapshots;
-        this.users = topUsers(topData);
-        this.isExist = this.points.length > 0 || this.snapshots.length > 0;
+        this.points = (topData.points ?? []).map((point) => ({
+            time: Number(point.time ?? point.timestamp),
+            uid: point.uid,
+            value: point.value,
+        }));
+        this.users = (topData.users ?? []).map((user) => ({
+            ...user,
+            ranking: 0,
+            currentPt: 0,
+        }));
+        if (this.points.length == 0 || this.users.length == 0) {
+            this.isExist = false;
+            return;
+        }
+
+        const latestRanking = this.getLatestRanking();
+        for (let i = 0; i < this.users.length; i++) {
+            for (let j = 0; j < latestRanking.length; j++) {
+                if (this.users[i].uid == latestRanking[j].uid) {
+                    this.users[i].ranking = j + 1;
+                    this.users[i].currentPt = latestRanking[j].point;
+                    break;
+                }
+            }
+        }
         this.isInitfull = true;
     }
 
@@ -521,12 +564,18 @@ export class MonthlyRankingCutoffTop {
         return chartDate;
     }
 
-    getRankingAt(time = Infinity) {
-        return rankingAt(this.snapshots, time);
-    }
-
     getLatestRanking(): { uid: number, point: number }[] {
-        return this.getRankingAt().map(({ uid, value }) => ({ uid, point: value }));
+        const result: { uid: number, point: number }[] = [];
+        if (!this.points?.length) return result;
+        //points 可达数十万条，禁用 Math.max(...arr) 展开 —— 会超出调用栈参数上限
+        const latestTime = this.points.reduce((max, point) => point.time > max ? point.time : max, -Infinity);
+        const latestPoints = this.points.filter(point => point.time === latestTime);
+        const snapshot = latestPoints.length ? latestPoints : this.points.slice(-10);
+        for (const element of snapshot) {
+            result.push({ uid: element.uid, point: element.value });
+        }
+        result.sort((a, b) => b.point - a.point);
+        return result;
     }
 
     getUserByUid(id: number): {

@@ -36,12 +36,56 @@ type MusicRankingTopResponse = {
     users: MusicRankingPlayer[];
 };
 
+// 探测数据源是否忽略 mid 的对照曲ID(不存在的曲目: 数据源若忽略 mid, 会对其返回活动PT线)
+const PT_FALLBACK_PROBE_MID = 999999;
+
+export type MusicRankingDataStatus = 'ok' | 'no_data' | 'insufficient' | 'event_pt_fallback';
+
+function seriesMatchesPtFallback(
+    series: { time: number, ep: number }[],
+    baseline: { time: number, ep: number }[],
+): boolean {
+    const n = Math.min(series.length, baseline.length);
+    if (n === 0) return false;
+    if (Math.abs(series.length - baseline.length) > 1) return false;
+    for (let i = 0; i < n; i++) {
+        if (series[i].time !== baseline[i].time || series[i].ep !== baseline[i].ep) {
+            return false;
+        }
+    }
+    return true;
+}
+
+function topSeriesMatchesPtFallback(
+    series: { time: number, uid: number, value: number }[],
+    baseline: { time: number, uid: number, value: number }[],
+): boolean {
+    const n = Math.min(series.length, baseline.length);
+    if (n === 0) return false;
+    if (Math.abs(series.length - baseline.length) > 1) return false;
+    for (let i = 0; i < n; i++) {
+        if (series[i].time !== baseline[i].time || series[i].uid !== baseline[i].uid || series[i].value !== baseline[i].value) {
+            return false;
+        }
+    }
+    return true;
+}
+
+function normalizeTopPoints(points: MusicRankingTopPoint[]): { time: number, uid: number, value: number }[] {
+    return (points ?? []).map((point) => ({
+        time: Number(point.time ?? point.timestamp),
+        uid: point.uid,
+        value: point.value,
+    }));
+}
+
 export class MusicRankingCutoff {
     eventId: number;
     server: Server;
     tier: number;
     musicId: number;
     isExist = false;
+    dataStatus: MusicRankingDataStatus = 'ok';
     cutoffs: { time: number, ep: number }[];
     latestCutoff: { time: number, ep: number };
     predictEP: number;
@@ -92,13 +136,28 @@ export class MusicRankingCutoff {
         const cutoffData = await this.getFinalCutoffsData();
         if (!cutoffData || cutoffData.result === false) {
             this.isExist = false;
+            this.dataStatus = 'no_data';
             return;
         }
 
         this.cutoffs = cutoffData.cutoffs as { time: number, ep: number }[];
-        if (this.cutoffs.length === 0) {
-            this.latestCutoff = { time: this.startAt, ep: 0 };
-            this.isInitfull = true;
+        if (!this.cutoffs || this.cutoffs.length === 0) {
+            this.isExist = false;
+            this.dataStatus = 'no_data';
+            return;
+        }
+
+        // 检测数据源忽略 mid 静默返回活动PT线的情况(如 bestdori tracker 对无分曲数据的活动)
+        const ptBaseline = await this.getPtFallbackBaseline();
+        if (ptBaseline && seriesMatchesPtFallback(this.cutoffs, ptBaseline)) {
+            this.isExist = false;
+            this.dataStatus = 'event_pt_fallback';
+            return;
+        }
+
+        if (this.cutoffs.length < 2) {
+            this.isExist = false;
+            this.dataStatus = 'insufficient';
             return;
         }
 
@@ -113,8 +172,27 @@ export class MusicRankingCutoff {
         return callRankingSources<MusicRankingBorderResponse>(
             this.server,
             MUSICRANKING_TURNS,
-            `/api/tracker/data?server=${<number>this.server}&event=${this.eventId}&tier=${this.tier}&mid=${this.musicId}`,
+            `/api/tracker/data?server=${<number>this.server}&event=${this.eventId}&tier=${this.tier}&mid=${this.getRankingMusicId()}`,
         );
+    }
+
+    /** 组曲(medley)活动的排名数据统一存于合计谱 mid=1, 其余活动使用真实曲目ID查询 */
+    private getRankingMusicId(): number {
+        return this.event.eventType === 'medley' ? 1 : this.musicId;
+    }
+
+    /**
+     * 获取数据源在"对照曲"(不存在的曲目ID)上的返回值。
+     * 数据源忽略 mid 时会返回活动PT线 — 与 mid=X 的返回逐点一致即判定发生了 PT 回退。
+     */
+    private async getPtFallbackBaseline(): Promise<{ time: number, ep: number }[] | undefined> {
+        const data = await callRankingSources<MusicRankingBorderResponse>(
+            this.server,
+            MUSICRANKING_TURNS,
+            `/api/tracker/data?server=${<number>this.server}&event=${this.eventId}&tier=${this.tier}&mid=${PT_FALLBACK_PROBE_MID}`,
+        );
+        if (!data || data.result === false) return undefined;
+        return data.cutoffs as { time: number, ep: number }[];
     }
 
     predict(): number {
@@ -217,6 +295,7 @@ export class MusicRankingCutoffTop {
     status: 'not_start' | 'in_progress' | 'ended';
     isInitfull: boolean = false;
     isExist = false;
+    dataStatus: MusicRankingDataStatus = 'ok';
     points: {
         time: number,
         uid: number,
@@ -274,17 +353,14 @@ export class MusicRankingCutoffTop {
         const topData = await callRankingSources<MusicRankingTopResponse>(
             this.server,
             MUSICRANKING_TURNS,
-            `/api/eventtop/data?server=${<number>this.server}&event=${this.eventId}&mid=${this.musicId}`,
+            `/api/eventtop/data?server=${<number>this.server}&event=${this.eventId}&mid=${this.getRankingMusicId()}`,
         );
         if (topData == undefined) {
             this.isExist = false;
+            this.dataStatus = 'no_data';
             return;
         }
-        this.points = (topData.points ?? []).map((point) => ({
-            time: Number(point.time ?? point.timestamp),
-            uid: point.uid,
-            value: point.value,
-        }));
+        this.points = normalizeTopPoints(topData.points ?? []);
         this.users = (topData.users ?? []).map((user) => ({
             ...user,
             ranking: 0,
@@ -292,7 +368,23 @@ export class MusicRankingCutoffTop {
         }));
         if (this.points.length == 0 || this.users.length == 0) {
             this.isExist = false;
+            this.dataStatus = 'no_data';
             return;
+        }
+
+        // 检测数据源忽略 mid 静默返回活动PT前十的情况(bestdori 对未知 mid 返回空, 此检测主要防其它源)
+        const baseline = await callRankingSources<MusicRankingTopResponse>(
+            this.server,
+            MUSICRANKING_TURNS,
+            `/api/eventtop/data?server=${<number>this.server}&event=${this.eventId}&mid=${PT_FALLBACK_PROBE_MID}`,
+        );
+        if (baseline) {
+            const baselinePoints = normalizeTopPoints(baseline.points ?? []);
+            if (topSeriesMatchesPtFallback(this.points, baselinePoints)) {
+                this.isExist = false;
+                this.dataStatus = 'event_pt_fallback';
+                return;
+            }
         }
 
         const latestRanking = this.getLatestRanking();
@@ -306,6 +398,11 @@ export class MusicRankingCutoffTop {
             }
         }
         this.isInitfull = true;
+    }
+
+    /** 组曲(medley)活动的排名数据统一存于合计谱 mid=1, 其余活动使用真实曲目ID查询 */
+    private getRankingMusicId(): number {
+        return this.event.eventType === 'medley' ? 1 : this.musicId;
     }
 
     getChartData(setStartToZero = false): { [key: number]: { x: Date, y: number }[] } {
@@ -341,7 +438,8 @@ export class MusicRankingCutoffTop {
     getLatestRanking(): { uid: number, point: number }[] {
         const result: { uid: number, point: number }[] = [];
         if (!this.points?.length) return result;
-        const latestTime = Math.max(...this.points.map(point => point.time));
+        //points 可达数十万条，禁用 Math.max(...arr) 展开 —— 会超出调用栈参数上限
+        const latestTime = this.points.reduce((max, point) => point.time > max ? point.time : max, -Infinity);
         const latestPoints = this.points.filter(point => point.time === latestTime);
         const snapshot = latestPoints.length ? latestPoints : this.points.slice(-10);
         for (const element of snapshot) {

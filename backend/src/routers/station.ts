@@ -33,6 +33,14 @@ router.post('/submitRoomNumber',
     async (req: Request, res: Response) => {
         const { number, rawMessage, platform, userId, userName, time, avatarUrl, bandoriStationToken } = req.body;
         const user = await userDB.getUser(platform, userId);
+        // 用户不存在或未开启车牌转发，均不转发
+        if (!user || user.shareRoomNumber === false) {
+            res.status(200).json({
+                status: 'failed',
+                data: '用户未开启车牌转发'
+            });
+            return;
+        }
         let userPlayerInList: userPlayerInList
         try {
             userPlayerInList = getUserPlayerByUser(user)

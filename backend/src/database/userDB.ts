@@ -40,8 +40,11 @@ export class UserDB {
       'platform': platform,
       'mainServer': globalServerPriority[0],
       'displayedServerList': globalDefaultServer,
-      'shareRoomNumber': true,
+      'shareRoomNumber': false,
       'userPlayerIndex': 0,
+      'tokenPlatform': '',
+      'channelUid': '',
+      'channelToken': '',
       'userPlayerList': [
       ]
     };
@@ -147,6 +150,18 @@ export function isPartialTsuguUser(obj: any): obj is Partial<tsuguUser> {
     return false;
   }
 
+  if ('tokenPlatform' in obj && typeof obj.tokenPlatform !== 'string') {
+    return false;
+  }
+
+  if ('channelUid' in obj && typeof obj.channelUid !== 'string') {
+    return false;
+  }
+
+  if ('channelToken' in obj && typeof obj.channelToken !== 'string') {
+    return false;
+  }
+
   if ('userPlayerList' in obj) {
     if (!Array.isArray(obj.userPlayerList)) {
       return false;
@@ -184,6 +199,12 @@ export interface tsuguUser {
   displayedServerList: Server[],
   shareRoomNumber: boolean,
   userPlayerIndex: number,
+  /** 凭据对应的登录平台（ios|android），由数据源接口自动探测后回传存储，显式传入可跳过探测 */
+  tokenPlatform?: string,
+  /** B站渠道登录凭据（扫码登录获得）：B站用户 mid，与 channelToken 成对，用于 导入全部配置/查PT */
+  channelUid?: string,
+  /** B站渠道登录凭据（扫码登录获得）：access_token */
+  channelToken?: string,
   userPlayerList: userPlayerInList[],
 }
 

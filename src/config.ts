@@ -80,10 +80,22 @@ export interface Config {
     compress: boolean,
     bandoriStationToken: string,
     backendUrl: string,
-    RemoteDBSwitch: boolean,
-    RemoteDBUrl: string,
+    garupaSpeedTrackerUrl: string,
   
     //noSpace: boolean,
     reply: boolean,
     at: boolean,
   }
+
+// 远程数据库不可用时的兜底用户数据(未绑定任何玩家), 供指令返回统一的未绑定提示
+export function createDefaultTsuguUser(userId: string, platform: string): tsuguUser {
+    return {
+        userId,
+        platform,
+        mainServer: globalDefaultServer[0],
+        displayedServerList: [...globalDefaultServer],
+        shareRoomNumber: false,
+        userPlayerIndex: 0,
+        userPlayerList: [],
+    }
+}

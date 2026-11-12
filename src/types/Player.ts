@@ -94,7 +94,8 @@ export class Player {
             member4: number;
             deckType: string;
         };
-        userProfileSituation: {
+        //上游可能不返回该字段（玩家未设置代表卡），为空或缺失时按编队队长处理
+        userProfileSituation?: {
             userId: string;
             situationId: number;
             illust: 'after_training' | 'normal';
@@ -364,7 +365,7 @@ export class Player {
         let illustCardId: number
         let trainingStatus: boolean
         let viewProfileSituationStatus: string
-        if (Object.keys(this.profile.userProfileSituation).length != 0) {
+        if (this.profile.userProfileSituation != undefined && Object.keys(this.profile.userProfileSituation).length != 0) {
             viewProfileSituationStatus = this.profile.userProfileSituation.viewProfileSituationStatus
         }
         else {

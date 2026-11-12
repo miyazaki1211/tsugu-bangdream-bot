@@ -1,19 +1,14 @@
 import * as path from 'path';
 import { assetsRootPath } from '@/config';
 import { getCacheDirectory, getFileNameFromUrl } from '@/api/utils';
-import { download } from '@/api/downloader';
+import { download, isKnownBadUrl } from '@/api/downloader';
 import { Buffer } from 'buffer';
 import { assetErrorImageBuffer } from '@/image/utils';
 import { logger } from '@/logger';
 import * as fs from 'fs';
 
-// 错误 URL 列表和错误缓存过期时间
-const errUrl: { [key: string]: number } = {};
-const ERROR_CACHE_EXPIRY = 12 * 60 * 60 * 1000; // 1 天
-
-async function downloadFile(url: string, IgnoreErr: boolean = true, overwrite = false, retryCount = 5): Promise<Buffer> {
+async function downloadFile(url: string, IgnoreErr: boolean = true, overwrite = false, retryCount: number = 3): Promise<Buffer> {
   try {
-    const currentTime = Date.now();
     if(url.includes('undefined')) {
       throw new Error("downloadFile: url.includes('undefined')");
     }
@@ -44,16 +39,17 @@ async function downloadFile(url: string, IgnoreErr: boolean = true, overwrite = 
         if(assetNotExists){
           throw e;
         }
-        //等待3秒后重试
-        await new Promise(resolve => setTimeout(resolve, 3000));
+        //404 或已被拉黑的 URL 重试必定失败，立即放弃，不再空等
+        if (String(e.message).includes('404') || isKnownBadUrl(url)) {
+          throw e;
+        }
+        //指数退避重试：500ms → 1s → 2s
+        const delay = Math.min(3000, 500 * Math.pow(2, attempt));
+        await new Promise(resolve => setTimeout(resolve, delay));
       }
     }
   } catch (e) {
     logger(`downloader`, `Failed to download file from "${url}". Error: ${e.message}`);
-
-    if (e.message.includes('404')) {
-      errUrl[url] = Date.now();
-    }
 
     if ((url.includes('.png') || url.includes('.svg')) && IgnoreErr) {
       return assetErrorImageBuffer;

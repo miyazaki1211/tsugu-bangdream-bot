@@ -5,7 +5,7 @@ import { drawCardList } from '@/view/cardList';
 import { isInteger, listToBase64 } from '@/routers/utils';
 import { isServerList } from '@/types/Server';
 import { fuzzySearch, FuzzySearchResult, isFuzzySearchResult } from '@/fuzzySearch';
-import { getServerByServerId, Server } from '@/types/Server';
+import { getServerByServerId, isServer, Server } from '@/types/Server';
 import { middleware } from '@/routers/middleware';
 import { Request, Response } from 'express';
 
@@ -19,10 +19,12 @@ router.post(
         body('fuzzySearchResult').optional().custom(isFuzzySearchResult),
         body('useEasyBG').isBoolean(),
         body('compress').optional().isBoolean(),
+        body('playerId').optional().isInt(),
+        body('playerServer').optional().custom(isServer),
     ],
     middleware,
     async (req: Request, res: Response) => {
-        const { displayedServerList, text, fuzzySearchResult, useEasyBG, compress } = req.body;
+        const { displayedServerList, text, fuzzySearchResult, useEasyBG, compress, playerId, playerServer } = req.body;
         
         // 检查 text 和 fuzzySearchResult 是否同时存在
         if (text && fuzzySearchResult) {
@@ -34,7 +36,11 @@ router.post(
         }
 
         try {
-            const result = await commandCard(displayedServerList, text || fuzzySearchResult, useEasyBG, compress);
+            //绑定的玩家信息(可选)，仅用于卡牌列表渲染时标记已拥有的卡牌
+            const playerInfo = (playerId != undefined && playerServer != undefined)
+                ? { playerId: playerId, server: getServerByServerId(playerServer) }
+                : undefined;
+            const result = await commandCard(displayedServerList, text || fuzzySearchResult, useEasyBG, compress, playerInfo);
             res.send(listToBase64(result));
         } catch (e) {
             console.log(e);
@@ -43,7 +49,7 @@ router.post(
     }
 );
 
-async function commandCard(displayedServerList: Server[], input: string | FuzzySearchResult, useEasyBG: boolean, compress?: boolean) {
+async function commandCard(displayedServerList: Server[], input: string | FuzzySearchResult, useEasyBG: boolean, compress?: boolean, playerInfo?: { playerId: number, server: Server }) {
     let fuzzySearchResult: FuzzySearchResult
     // 根据 input 的类型执行不同的逻辑
     if (typeof input === 'string') {
@@ -59,7 +65,7 @@ async function commandCard(displayedServerList: Server[], input: string | FuzzyS
         return ['错误: 没有有效的关键词']
     }
 
-    return await drawCardList(fuzzySearchResult, displayedServerList, useEasyBG, compress)
+    return await drawCardList(fuzzySearchResult, displayedServerList, useEasyBG, compress, playerInfo)
 
 }
 

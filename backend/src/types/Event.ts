@@ -452,47 +452,85 @@ export class Event {
     }
 }
 
-//获取当前进行中的活动,如果期间没有活动，则返回上一个刚结束的活动
+//获取当前进行中的活动,如果期间没有活动，则返回24小时内即将开始的活动，否则返回上一个刚结束的活动
 export function getPresentEvent(server: Server, time?: number) {
-    if (!time) {
+    time = Number(time)
+    if (!time || !Number.isFinite(time)) {
         time = Date.now()
     }
-    var eventList: Array<number> = []
+    var inProgressList: Array<number> = []
+    var upcomingList: Array<number> = []
     var eventListMain = mainAPI['events']
     for (var key in eventListMain) {
         var event = new Event(parseInt(key))
         //如果在活动进行时
         if (event.startAt[server] != null && event.endAt[server] != null) {
-            if (event.startAt[server] - 1000 * 60 * 60 * 24 <= time && event.endAt[server] >= time) {
+            if (event.startAt[server] <= time && event.endAt[server] >= time) {
+                inProgressList.push(parseInt(key))
+            }
+            else if (event.startAt[server] - 1000 * 60 * 60 * 24 <= time) {
                 //提前一天
-                eventList.push(parseInt(key))
+                upcomingList.push(parseInt(key))
             }
         }
     }
-    let eventEndAtFlags:number = 0
+    //优先返回真正进行中的活动，避免"提前一天"窗口内的下一期活动抢占仍在进行的当前活动
+    if (inProgressList.length != 0) {
+        return new Event(inProgressList[inProgressList.length - 1])
+    }
+    //没有进行中的活动时，返回24小时内即将开始的活动（保持原有"提前一天"语义）
+    if (upcomingList.length != 0) {
+        return new Event(upcomingList[upcomingList.length - 1])
+    }
+    let eventEndAtFlags: number = 0
+    var endedList: Array<number> = []
     //如果没有活动进行中，则返回上一个刚结束的活动
-    if (eventList.length == 0) {
-        for (var key in eventListMain) {
-            var event = new Event(parseInt(key))
-            //如果在活动进行时
-            if (event.startAt[server] != null && event.endAt[server] != null) {
-                if (event.endAt[server] <= time) {
-                    if(event.endAt[server] > eventEndAtFlags){
-                        eventList.push(parseInt(key))
-                        eventEndAtFlags = event.endAt[server]
-                    }
+    for (var key in eventListMain) {
+        var event = new Event(parseInt(key))
+        //如果在活动进行时
+        if (event.startAt[server] != null && event.endAt[server] != null) {
+            if (event.endAt[server] <= time) {
+                if (event.endAt[server] > eventEndAtFlags) {
+                    endedList.push(parseInt(key))
+                    eventEndAtFlags = event.endAt[server]
                 }
             }
         }
     }
 
     //如果没有活动，则返回null
-    if (eventList.length == 0) {
+    if (endedList.length == 0) {
         return null
     }
 
     //如果有多个活动，则返回最后一个
-    return new Event(eventList[eventList.length - 1])
+    return new Event(endedList[endedList.length - 1])
+}
+
+export function getLatestEndedEvent(server: Server, time?: number): Event | null {
+    if (!time || !Number.isFinite(time)) {
+        time = Date.now()
+    }
+    let eventEndAtFlags: number = 0
+    var endedList: Array<number> = []
+    var eventListMain = mainAPI['events']
+    for (var key in eventListMain) {
+        var event = new Event(parseInt(key))
+        //活动已结束: endAt <= time
+        if (event.startAt[server] != null && event.endAt[server] != null) {
+            if (event.endAt[server] <= time) {
+                if (event.endAt[server] > eventEndAtFlags) {
+                    endedList.push(parseInt(key))
+                    eventEndAtFlags = event.endAt[server]
+                }
+            }
+        }
+    }
+    //如果没有任何已结束的活动，则返回null
+    if (endedList.length == 0) {
+        return null
+    }
+    return new Event(endedList[endedList.length - 1])
 }
 
 //根据服务器，将活动列表排序

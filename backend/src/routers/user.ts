@@ -70,6 +70,8 @@ router.post('/changeUserData',
     }
 );
 
+// 设置本人凭据已改为B站扫码登录, 见 routers/qrcodeLogin.ts (POST /user/qrcodeLogin/start|poll|delete)
+
 let verifyCodeCache = {}
 
 // 绑定玩家请求，返回验证码

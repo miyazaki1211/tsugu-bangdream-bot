@@ -1,5 +1,6 @@
 import axios, { AxiosResponse, AxiosError } from 'axios';
 import { Logger } from 'koishi'
+import { RENDER_TIMEOUT } from './axiosTimeout'
 export const getReplyFromBackendLogger = new Logger('tsugu-getReplyFromBackend');
 
 function base64ToList(basd64List: Array<{ type: 'string' | 'base64', string: string }>): Array<Buffer | string> {
@@ -18,7 +19,7 @@ function base64ToList(basd64List: Array<{ type: 'string' | 'base64', string: str
 
 async function sendPostRequest(url: string, data: any): Promise<Object> {
     try {
-        const response: AxiosResponse = await axios.post(url, data);
+        const response: AxiosResponse = await axios.post(url, data, { timeout: RENDER_TIMEOUT });
         const result: any = response.data as Object;
         switch (response.status) {
             case 200:
@@ -27,7 +28,7 @@ async function sendPostRequest(url: string, data: any): Promise<Object> {
             case 400:
                 return [{
                     type: 'string',
-                    string: `错误: 请求参数错误, 可能因为版本与后端服务器版本不一致`
+                    string: `错误: 请求参数错误, 可能是版本与后端不一致`
                 }];
             case 404:
                 return [{
@@ -55,6 +56,44 @@ async function sendPostRequest(url: string, data: any): Promise<Object> {
         if (axios.isAxiosError(error)) {
             // 处理由 Axios 抛出的错误
             console.error('Axios Error:', error.message);
+            if (error.response) {
+                // 后端返回了错误响应: 优先透传后端返回的错误文案(如参数校验失败)
+                const responseData = error.response.data as any;
+                const backendMessage: unknown = responseData?.data;
+                if (typeof backendMessage == 'string' && backendMessage.length > 0) {
+                    const text = (backendMessage.startsWith('错误') || backendMessage.startsWith('内部错误')) ? backendMessage : `错误: ${backendMessage}`;
+                    return [{ type: 'string', string: text }];
+                }
+                switch (error.response.status) {
+                    case 400:
+                        return [{
+                            type: 'string',
+                            string: `错误: 请求参数错误, 可能是版本与后端不一致`
+                        }];
+                    case 404:
+                        return [{
+                            type: 'string',
+                            string: `错误: 无法连接至后端服务器`
+                        }];
+                    case 500:
+                        return [{
+                            type: 'string',
+                            string: `内部错误`
+                        }];
+                    default:
+                        return [{
+                            type: 'string',
+                            string: `错误: 后端服务器返回异常状态 (${error.response.status})`
+                        }];
+                }
+            }
+            // 未收到响应: 连接层错误, 区分超时与其他连接问题
+            if (error.code == 'ECONNABORTED' || error.code == 'ETIMEDOUT') {
+                return [{
+                    type: 'string',
+                    string: '错误: 后端服务器响应超时, 请稍后重试'
+                }];
+            }
             return [{
                 type: 'string',
                 string: '错误: 后端服务器连接出错'

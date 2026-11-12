@@ -19,18 +19,18 @@ router.post(
         body('mainServer').custom(isServer),
         body('tier').isInt(),
         body('eventId').optional().isInt(),
-        body('music').exists(),
+        body('musicIndex').optional().isInt({ min: 1 }),
         body('compress').optional().isBoolean(),
     ],
     middleware,
     async (req: Request, res: Response) => {
-        const { mainServer, tier, eventId, music, compress } = req.body;
+        const { mainServer, tier, eventId, musicIndex, compress } = req.body;
         try {
             const result = await commandCutOffMusic(
                 getServerByServerId(mainServer),
                 tier,
                 compress,
-                music,
+                musicIndex,
                 eventId
             );
             res.send(listToBase64(result));
@@ -41,51 +41,29 @@ router.post(
     }
 );
 
-async function resolveMusicId(event: Event, server: Server, alias: string): Promise<number | null> {
-    const lowerAlias = alias.toLowerCase().trim();
-    const musics = event.musics?.[server];
-    if (!musics || musics.length === 0) return null;
-
-    const matches: number[] = [];
-    for (const music of musics) {
-        const song = new Song(music.musicId);
-        if (!song.isExist) continue;
-
-        for (const title of song.musicTitle) {
-            if (title && title.toLowerCase().includes(lowerAlias)) {
-                matches.push(music.musicId);
-                break;
+/** 生成活动歌榜曲目清单文案(序号越界时提示用户可选歌曲) */
+function eventMusicListText(musics: { musicId: number }[], server: Server): string {
+    return musics
+        .map((m, i) => {
+            const song = new Song(m.musicId);
+            if (!song.isExist) {
+                return `第${i + 1}首: ID ${m.musicId}`;
             }
-        }
-
-        if (song.nickname) {
-            for (const nick of song.nickname.split(',')) {
-                if (nick.trim().toLowerCase() === lowerAlias || nick.trim().toLowerCase().includes(lowerAlias)) {
-                    if (!matches.includes(music.musicId)) {
-                        matches.push(music.musicId);
-                    }
-                    break;
-                }
-            }
-        }
-    }
-
-    if (matches.length === 0) return null;
-    return matches[0];
+            const title = song.musicTitle?.[server] ?? song.musicTitle?.[Server.jp] ?? `ID ${m.musicId}`;
+            return `第${i + 1}首: ${title}`;
+        })
+        .join('\n');
 }
 
 export async function commandCutOffMusic(
     mainServer: Server,
     tier: number,
     compress: boolean,
-    music: number | string,
+    musicIndex?: number,
     eventId?: number
 ): Promise<Array<Buffer | string>> {
     if (!tier) {
         return ['请输入排名'];
-    }
-    if (!music) {
-        return ['请输入歌曲ID或别名'];
     }
     if (!eventId) {
         eventId = getPresentEvent(mainServer).eventId;
@@ -96,25 +74,23 @@ export async function commandCutOffMusic(
         return [`错误: 活动${eventId}不存在`];
     }
     await event.initFull();
-    if (!event.musics?.[mainServer] || event.musics[mainServer].length === 0) {
+    const musics = event.musics?.[mainServer];
+    if (!musics || musics.length === 0) {
         return [`错误: 活动${eventId}在${serverNameFullList[mainServer]}没有歌榜数据`];
     }
 
-    let resolvedMusicId: number;
-    if (typeof music === 'number') {
-        resolvedMusicId = music;
-    } else {
-        const resolved = await resolveMusicId(event, mainServer, music);
-        if (resolved === null) {
-            return [`错误: 未在活动歌曲中匹配到 "${music}"`];
-        }
-        resolvedMusicId = resolved;
+    const index = musicIndex ?? 1;
+    if (event.eventType !== 'medley' && index > musics.length) {
+        return [
+            `错误: 活动${eventId}在${serverNameFullList[mainServer]}的歌榜共${musics.length}首歌\n${eventMusicListText(musics, mainServer)}`
+        ];
     }
+    const musicId = event.eventType === 'medley' ? 1 : musics[index - 1].musicId;
 
     if (tier == 10) {
-        return await drawMusicRankingCutoffTop(eventId, mainServer, compress, resolvedMusicId);
+        return await drawMusicRankingCutoffTop(eventId, mainServer, compress, musicId);
     }
-    return await drawMusicRankingCutoffDetail(eventId, tier, mainServer, compress, resolvedMusicId);
+    return await drawMusicRankingCutoffDetail(eventId, tier, mainServer, compress, musicId);
 }
 
 export { router as cutOffMusicRouter };

@@ -36,6 +36,13 @@ export const difficultyNameList = [ //难度名称List
     'expert',
     'special'
 ]
+export const difficultyShortNameList = [ //难度名称缩写List
+    'ez',
+    'nm',
+    'hd',
+    'ex',
+    'sp'
+]
 
 export class Song {
     songId: number;
@@ -544,7 +551,38 @@ export interface songInRank {
     meta: number,
     rank: number
 }
-export function getMetaRanking(Fever: boolean, mainServer: Server): songInRank[] {
+export interface DifficultyFilter {
+    op: '<' | '>',
+    value: number
+}
+//解析难度过滤参数, 如 '<26' 或 '>20', 非法输入返回 null
+export function parseDifficultyFilter(text: string): DifficultyFilter | null {
+    const match = /^([<>])\s*(\d+(?:\.\d+)?)$/.exec(text.trim())
+    if (match == null) {
+        return null
+    }
+    return { op: match[1] as '<' | '>', value: parseFloat(match[2]) }
+}
+//获取meta数据中所有可用的技能持续时间(秒), 结果缓存于进程内
+var availableSkillDurations: number[] = null
+export function getAvailableSkillDurations(): number[] {
+    if (availableSkillDurations != null) {
+        return availableSkillDurations
+    }
+    const durationSet: Set<number> = new Set()
+    const metaTable = mainAPI['meta']
+    for (const songId in metaTable) {
+        for (const difficulty in metaTable[songId]) {
+            for (const duration in metaTable[songId][difficulty]) {
+                durationSet.add(parseFloat(duration))
+            }
+        }
+    }
+    availableSkillDurations = Array.from(durationSet).sort((a, b) => a - b)
+    return availableSkillDurations
+}
+
+export function getMetaRanking(Fever: boolean, mainServer: Server, scoreUpMaxValue: number = 150, skillDuration: number = 7): songInRank[] {
     var songIdList = Object.keys(mainAPI['meta'])
     var songRankList: songInRank[] = []
     for (let i = 0; i < songIdList.length; i++) {
@@ -561,7 +599,11 @@ export function getMetaRanking(Fever: boolean, mainServer: Server): songInRank[]
         //有一些song没有4 difficulty
         for (var j in song.difficulty) {
             var difficulty = parseInt(j)
-            var meta = song.calcMeta(Fever, difficulty)
+            //如果该难度没有此技能持续时间的meta数据，则跳过
+            if (song.meta[difficulty] == undefined || song.meta[difficulty][skillDuration] == undefined) {
+                continue
+            }
+            var meta = song.calcMeta(Fever, difficulty, scoreUpMaxValue, skillDuration)
             songRankList.push({
                 songId: song.songId,
                 difficulty: difficulty,

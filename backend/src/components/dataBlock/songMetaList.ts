@@ -19,12 +19,12 @@ const line = drawDottedLine({
     color: "#a8a8a8"
 })
 
-export async function drawSongMetaListDataBlock(Fever: boolean, song: Song, topLeftText?: string, displayedServerList: Server[] = globalDefaultServer) {
+export async function drawSongMetaListDataBlock(Fever: boolean, song: Song, topLeftText?: string, displayedServerList: Server[] = globalDefaultServer, scoreUpMaxValue: number = 150) {
     var metaRanking = {}
     for (let i = 0; i < displayedServerList.length; i++) {
         const server = displayedServerList[i];
         metaRanking[server] = {}
-        metaRanking[server].data = getMetaRanking(Fever, server)
+        metaRanking[server].data = getMetaRanking(Fever, server, scoreUpMaxValue)
         metaRanking[server].maxMeta = metaRanking[server].data[0].meta
     }
     var list: Array<Image | Canvas> = []

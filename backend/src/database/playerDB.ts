@@ -2,7 +2,7 @@ import { MongoClient } from 'mongodb';
 import { Server } from '@/types/Server';
 import { Event } from '@/types/Event';
 import { difficultyColorList, Song } from '@/types/Song';
-import { eventTypeList, playerDetail } from '@/types/BuildTypes';
+import { playerDetail, PtConfig } from '@/types/BuildTypes';
 
 export class PlayerDB {
   private client: MongoClient;
@@ -38,28 +38,31 @@ export class PlayerDB {
     data.currentEvent = eventId
     if (!data.eventSongs[eventId]) {
       const event = new Event(eventId)
-      if (eventTypeList.includes(event.eventType)) {
-        var defaultServer = server
-        if (!event.startAt[defaultServer]) {
-            defaultServer = Server.jp
-        }
-        await event.initFull()
+      var defaultServer = server
+      if (!event.startAt[defaultServer]) {
+          defaultServer = Server.jp
+      }
+      await event.initFull()
+      const serverMusics = event.musics?.[defaultServer]?.length
+          ? event.musics[defaultServer]
+          : event.musics?.find((m) => m && m.length > 0)
+      if (serverMusics) {
         const list = data.eventSongs[eventId] = []
-        if (event.eventType != 'challenge') {
-          for (var element of event.musics[defaultServer]) {
+        if (event.eventType == 'challenge') {
+          const song = new Song(serverMusics[0].musicId)
+          list.push({
+            songId: song.songId,
+            difficulty: song.getMaxMetaDiffId()
+          })
+        }
+        else {
+          for (var element of serverMusics) {
               const song = new Song(element.musicId)
               list.push({
                   songId: song.songId,
                   difficulty: song.getMaxMetaDiffId()
               })
           }
-        }
-        else {
-          const song = new Song(event.musics[defaultServer][0].musicId)
-          list.push({
-            songId: song.songId,
-            difficulty: song.getMaxMetaDiffId()
-          })
         }
       }
     }
@@ -96,6 +99,13 @@ export class PlayerDB {
     await this.getCollection().updateOne({ _id: playerId }, { $set: data })
     return data
   }
+  //清空玩家全部卡牌（全量导入前调用，避免已删除的卡牌残留在库中）
+  async clearCard(playerId: number) {
+    var data: playerDetail = await this.getPlayer(playerId)
+    data.cardList = {}
+    await this.getCollection().updateOne({ _id: playerId }, { $set: data })
+    return data
+  }
   
   async updateCharacterBouns(playerId: number, list) {
     var data: playerDetail = await this.getPlayer(playerId)
@@ -115,6 +125,27 @@ export class PlayerDB {
     return data
   }
 
+  async updatePtConfig(playerId: number, config: Partial<PtConfig>) {
+    var data: playerDetail = await this.getPlayer(playerId)
+    data.ptConfig = { ...data.ptConfig, ...config }
+    await this.getCollection().updateOne({ _id: playerId }, { $set: data })
+    return data
+  }
+
+  async updatePtSong(playerId: number, songId: number, difficulty: number) {
+    var data: playerDetail = await this.getPlayer(playerId)
+    data.ptSong = { songId, difficulty }
+    await this.getCollection().updateOne({ _id: playerId }, { $set: data })
+    return data
+  }
+
+  async resetPtSong(playerId: number) {
+    var data: playerDetail = await this.getPlayer(playerId)
+    data.ptSong = undefined
+    await this.getCollection().updateOne({ _id: playerId }, { $set: data })
+    return data
+  }
+
   async getPlayer(playerId: number): Promise<playerDetail | null> {
     var data: playerDetail
     const res = await this.getCollection().findOne({ _id: playerId })
@@ -126,5 +157,16 @@ export class PlayerDB {
       data.init(await this.getCollection().findOne({ _id: playerId }))
     }
     return data;
+  }
+
+  //只读查询: 玩家不存在时返回 null, 不像 getPlayer 那样初始化并插入空文档
+  async findPlayer(playerId: number): Promise<playerDetail | null> {
+    const res = await this.getCollection().findOne({ _id: playerId })
+    if (res == null) {
+      return null
+    }
+    const data = new playerDetail(playerId)
+    data.init(res)
+    return data
   }
 }

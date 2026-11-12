@@ -1,4 +1,5 @@
 import { callAPIAndCacheResponse } from '@/api/getApi';
+import { ensureLocalRankingSourceInited } from '@/api/rankingSourceInit';
 import { resolveSourceUrls } from '@/config';
 import { logger } from '@/logger';
 import { Server } from '@/types/Server';
@@ -13,6 +14,7 @@ export async function callRankingSources<T extends object>(
     retryCount: number = 3,
     isValid: (data: T) => boolean = (data) => data != null && data['result'] !== false,
 ): Promise<T | undefined> {
+    await ensureLocalRankingSourceInited();
     const serverName = typeof server === 'string' ? server : Server[server];
     const sources = resolveSourceUrls(serverName, sourceOrder);
 

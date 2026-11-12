@@ -344,6 +344,14 @@ export class Card {
         }
         return typeName[this.type]
     }
+    //判断属性是否为Bestdori的占位数据(如卡片创作等活动卡,所有等级三维均为15000,远超真实值)
+    isStatPlaceholder(): boolean {
+        const firstLevelStat = this.stat ? this.stat['1'] : undefined
+        if (firstLevelStat == undefined) {
+            return false
+        }
+        return firstLevelStat['performance'] == 15000 && firstLevelStat['technique'] == 15000 && firstLevelStat['visual'] == 15000
+    }
     getMaxLevel(): number {
         var maxLevel = 0
         for (const i in this.stat) {

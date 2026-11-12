@@ -6,12 +6,41 @@ import mainAPI from "@/types/_Main"
 import { Stat, addStat, subStat, mulStat, statSum, emptyStat } from "@/types/Card"
 
 export const limit = 60
-export const medleyLimit = 31
+export const medleyLimit = 64
 export const eventTypeList = [
   'medley', 
   'versus', 
   'challenge'
 ]
+
+/** PT 计算用户自定义参数（存储用户输入的原始值，调用 optimize API 时再转换） */
+export interface PtConfig {
+  /** 队友综合力 (0-420000, 默认 400000) → cooperative.teammates.expectedStat */
+  teammateStat: number
+  /** 队友技能倍率 (10-170, 默认 150, 表示 1.50x) → leaderScoreUp = leaderScoreUpRaw / 100 */
+  leaderScoreUpRaw: number
+  /** 技能持续时间 (5-8, 默认 7) → cooperative.teammates.leaderSkillDuration */
+  leaderSkillDuration: number
+  /** 对邦/5v5 排名 (1-5, 默认 1) → teamRank = teamRankInput - 1 (0-based) */
+  teamRankInput: number
+  /** 5v5 输赢 (默认 true) → festival.won */
+  festivalWon: boolean
+  /** 支援队伍综合力 (0-400000, 默认 290000) → missionSupportPtBonus = floor(supportStat / 3000) */
+  supportStat: number
+}
+
+/** PT 参数默认值 */
+export const DEFAULT_PT_CONFIG: PtConfig = {
+  teammateStat: 400000,
+  leaderScoreUpRaw: 150,
+  leaderSkillDuration: 7,
+  teamRankInput: 1,
+  festivalWon: true,
+  supportStat: 290000,
+}
+
+/** 协力歌曲默认值: 325 ex */
+export const DEFAULT_PT_SONG = { songId: 325, difficulty: 3 }
 
 export function checkCard(player: playerDetail, eventType: string, length: number): string {
     if (length == 0) {
@@ -276,6 +305,9 @@ export class playerDetail {
       characterTask: Stat
     }
   }
+  ptConfig?: PtConfig
+  /** PT计算指令使用的歌曲（独立于选择歌曲，per-player 存储） */
+  ptSong?: { songId: number; difficulty: number }
   constructor(playerId: number) {
     this.playerId = playerId
   }
@@ -284,6 +316,8 @@ export class playerDetail {
     this.cardList = {}
     this.areaItem = {}
     this.characterBouns = {}
+    this.ptConfig = { ...DEFAULT_PT_CONFIG }
+    this.ptSong = { ...DEFAULT_PT_SONG }
     const areaItemData = mainAPI['areaItems']
     for (const areaItemId in areaItemData) {
       this.areaItem[areaItemId] = { level: 0 }
@@ -301,6 +335,12 @@ export class playerDetail {
       this.areaItem = data.areaItem
       this.characterBouns = data.characterBouns
       this.currentEvent = data.currentEvent
+      if (data.ptConfig) {
+        this.ptConfig = { ...DEFAULT_PT_CONFIG, ...data.ptConfig }
+      }
+      if (data.ptSong) {
+        this.ptSong = data.ptSong
+      }
     }
   }
   getCharacterCardCount() {

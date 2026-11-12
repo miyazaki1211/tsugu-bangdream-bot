@@ -6,7 +6,7 @@ import { drawDatablock } from '@/components/dataBlock';
 import { drawList, line, drawListMerge } from '@/components/list';
 import { changeTimePeriodFormat } from '@/components/list/time';
 import { outputFinalBuffer } from '@/image/output';
-import { MusicRankingCutoff } from '@/types/MusicRankingCutoff';
+import { MusicRankingCutoff, MusicRankingCutoffTop } from '@/types/MusicRankingCutoff';
 import { Song } from '@/types/Song';
 import { drawEventDatablock } from '@/components/dataBlock/event';
 import { drawSongInList } from '@/components/list/song';
@@ -28,15 +28,37 @@ export async function drawMusicRankingCutoffDetail(
         return [`错误: ${serverNameFullList[mainServer]} 歌榜或档线不存在`];
     }
     await cutoff.initFull();
-    if (!cutoff.latestCutoff) return [`错误: ${serverNameFullList[mainServer]} 歌榜或档线暂不存在`];
+    if (!cutoff.isExist || !cutoff.latestCutoff) {
+        if (cutoff.dataStatus === 'event_pt_fallback') {
+            return [`错误: ${serverNameFullList[mainServer]}活动${eventId} T${tier} 档线没有该曲目的歌榜数据(数据源仅返回活动PT线, 已拒绝显示)`];
+        }
+        if (cutoff.dataStatus === 'insufficient') {
+            return [`错误: ${serverNameFullList[mainServer]} 歌榜 T${tier} 档线数据不足(仅${cutoff.cutoffs ? cutoff.cutoffs.length : 0}个数据点), 无法绘制`];
+        }
+        return [`错误: ${serverNameFullList[mainServer]} 歌榜 T${tier} 档线暂无数据`];
+    }
 
     const all: Array<Canvas | Image> = [];
     all.push(drawTitle('预测线', `${serverNameFullList[mainServer]} 歌榜 T${tier}档线`));
     all.push(await drawEventDatablock(cutoff.event, [mainServer]));
-    all.push(drawDatablock({ list: [await drawSongInList(new Song(musicId))] }));
+    // 组曲活动的排名数据为全部曲目合计, 不展示单曲卡片
+    if (cutoff.event.eventType !== 'medley') {
+        all.push(drawDatablock({ list: [await drawSongInList(new Song(musicId))] }));
+    }
 
     const list: Array<Image | Canvas> = [];
     const time = Date.now();
+
+    // T1占比: 当前档线最新分数线 / 歌榜T1分数(取自前十数据源最新快照)
+    let t1RatioText = '?';
+    const top = new MusicRankingCutoffTop(eventId, mainServer, musicId);
+    await top.initFull();
+    if (top.isExist) {
+        const t1Score = top.getLatestRanking()[0]?.point;
+        if (t1Score && t1Score > 0) {
+            t1RatioText = `${((cutoff.latestCutoff.ep / t1Score) * 100).toFixed(3)}%`;
+        }
+    }
 
     if (cutoff.status == 'in_progress') {
         cutoff.predict();
@@ -62,12 +84,18 @@ export async function drawMusicRankingCutoffDetail(
         list.push(drawListMerge(tempImageList));
         list.push(line);
 
-        list.push(drawList({ key: '活动剩余时间', text: `${changeTimePeriodFormat(cutoff.endAt - time)}` }));
+        list.push(drawListMerge([
+            drawList({ key: '活动剩余时间', text: `${changeTimePeriodFormat(cutoff.endAt - time)}` }),
+            drawList({ key: 'T1占比', text: t1RatioText }),
+        ]));
         list.push(line);
     } else if (cutoff.status == 'ended') {
         list.push(drawList({ key: '状态', text: statusName[cutoff.status] }));
         list.push(line);
-        list.push(drawList({ key: '最终分数线', text: cutoff.latestCutoff.ep.toString() }));
+        list.push(drawListMerge([
+            drawList({ key: '最终分数线', text: cutoff.latestCutoff.ep.toString() }),
+            drawList({ key: 'T1占比', text: t1RatioText }),
+        ]));
         list.push(line);
     } else {
         list.push(drawList({ key: '状态', text: statusName[cutoff.status] }));

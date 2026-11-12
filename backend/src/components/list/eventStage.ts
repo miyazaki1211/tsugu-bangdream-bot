@@ -1,5 +1,5 @@
 import { stageTypeList, stageTypeTextStrokeColor, stageTypeName, Stage } from "@/types/EventStage";
-import { Song, difficultyColorList, difficultyNameList } from "@/types/Song";
+import { Song, difficultyColorList, difficultyShortNameList } from "@/types/Song";
 import { Canvas, Image, FontLibrary } from 'skia-canvas';
 import { assetsRootPath } from '@/config'
 import { changeTimefomant } from '@/components/list/time'
@@ -83,18 +83,18 @@ async function drawSongInEventStageSongHorizontal(song: Song, meta: boolean): Pr
     const sosMeta = (new Song(306)).calcMeta(true, 3)
     if (meta) {
         let difficultyLineGraphList = []
-        let maxMeta = 0, maxDiff
+        let maxMeta = 0, maxDiffId = 0
         for (let i in song.difficulty) {
             const difficultyId = parseInt(i);
             const meta = song.calcMeta(true, difficultyId)
             // difficultyLineGraphList.push(drawDifficultyLineGraph(difficultyId, meta));
             if (maxMeta < meta) {
                 maxMeta = meta
-                maxDiff = difficultyNameList[difficultyId]
+                maxDiffId = difficultyId
             }
         }
         const percent = Math.round(maxMeta / sosMeta * 1000) / 10
-        ctx.fillText(`难度:${maxDiff}`, 4, 128)
+        ctx.fillText(`难度:${difficultyShortNameList[maxDiffId]}${song.songLevels[maxDiffId]}`, 4, 128)
         ctx.fillText(`分数:${percent}%`, 4, 148)
         // const difficultyLineGraph = stackImageHorizontal(difficultyLineGraphList)
         // ctx.drawImage(difficultyLineGraph, 3, 0);

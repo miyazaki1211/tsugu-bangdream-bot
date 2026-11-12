@@ -3,7 +3,7 @@ import { Band } from '@/types/Band'
 import * as BestdoriPreview from '@/components/BestdoriPreview.cjs'
 import { getServerByPriority } from '@/types/Server'
 import { Server } from '@/types/Server'
-import { globalDefaultServer, serverNameFullList } from '@/config';
+import { globalDefaultServer, serverNameFullList, imageCompressQuality } from '@/config';
 import { callAPIAndCacheResponse } from '@/api/getApi'
 import { Bestdoriurl } from '@/config'
 
@@ -33,7 +33,7 @@ export async function drawSongChart(songId: number, difficultyId: number, displa
 
     let buffer:Buffer
     if( compress!=undefined && compress){
-        buffer = await tempcanv.toBuffer('jpeg',{quality:0.7})
+        buffer = await tempcanv.toBuffer('jpeg',{quality: imageCompressQuality})
     }
     else{
         buffer = await tempcanv.toBuffer('png')
@@ -60,7 +60,7 @@ export async function drawCommunitySongChart(songId: number, compress: boolean):
 
     let buffer:Buffer
     if( compress!=undefined && compress){
-        buffer = await tempcanv.toBuffer('jpeg',{quality:0.7})
+        buffer = await tempcanv.toBuffer('jpeg',{quality: imageCompressQuality})
     }
     else{
         buffer = await tempcanv.toBuffer('png')

@@ -1,12 +1,14 @@
 import { callAPIAndCacheResponse } from '@/api/getApi';
+import { keepAliveAxiosConfig } from '@/api/httpAgent';
+import { ensureLocalRankingSourceInited } from '@/api/rankingSourceInit';
 import mainAPI from '@/types/_Main';
-import { Bestdoriurl, USE_HHWX_SOURCE_PREFER, USE_STAR_VIEWER_SOURCE_PREFER, EVENTRANKING_TURNS, resolveSourceUrls, tierListOfServer } from '@/config';
+import { Bestdoriurl, STAR_VIEWER_Url, STAR_VIEWER_TIER_LIST, USE_HHWX_SOURCE_PREFER, USE_STAR_VIEWER_SOURCE_PREFER, EVENTRANKING_TURNS, resolveSourceUrls, tierListOfServer } from '@/config';
 import { Server } from '@/types/Server';
 import { Event, getPresentEvent } from '@/types/Event';
 import { predict } from '@/api/cutoff.cjs'
-import { logger } from '@/logger';
+import { logger, perfMark } from '@/logger';
 import { normalizeTimestamp, getDateByServerTimezone, getServerUtcOffset, GetProbablyTimeDifference } from '@/components/list/time';
-import { getJsonAndSave } from '@/api/downloader';
+import axios from 'axios';
 
 const predictServerURL = `${process.env.PREDICT_SERVER_URL || 'http://127.0.0.1:8000'}/predictions/`;
 
@@ -29,6 +31,7 @@ export class Cutoff {
     useHHWX = USE_HHWX_SOURCE_PREFER;
     useSTAR_VIEWER = USE_STAR_VIEWER_SOURCE_PREFER;
     dailyIncrement = [];
+    dailyIncrementInvalidDays: number[] = [];
     currentGetDataTime
     constructor(eventId: number, server: Server, tier: number) {
         const event = new Event(eventId)
@@ -72,9 +75,20 @@ export class Cutoff {
             this.status = 'in_progress'
         }
     }
-    getFinalApiUrl(reverse: boolean) {
-        const sources = this.getTrackerSources();
-        return sources[reverse ? 1 : 0]?.url ?? sources[0]?.url;
+    getFinalApiUrl (reverse:boolean){   // reverse:是否反向获取。假如useHHWX/useSTAR_VIEWER为False，当反向开启后就使用对应数据源
+        if (this.server == Server.cn){  // 国服使用STAR_VIEWER优先，Bestdori作为临时回退
+            var url = !reverse ? STAR_VIEWER_Url : Bestdoriurl
+            return url
+        }
+        else if (this.server == Server.jp){  // 日服使用STAR_VIEWER优先，Bestdori作为临时回退
+            var url = !reverse ? STAR_VIEWER_Url : Bestdoriurl
+            return url
+        }
+        else {  // 其他服不使用回退数据源
+            this.useHHWX = false
+            this.useSTAR_VIEWER = false
+            return Bestdoriurl
+        }
     }
     async getFinalCutoffsData (forceReadCache:boolean = false ){
         return await this.tryTrackerSources(forceReadCache);
@@ -84,32 +98,22 @@ export class Cutoff {
         return resolveSourceUrls(Server[this.server], EVENTRANKING_TURNS);
     }
 
-    private async tryTrackerSources(forceReadCache: boolean): Promise<object | null> {
+    private async tryTrackerSources(forceReadCache: boolean, startIndex: number = 0): Promise<object | null> {
+        await ensureLocalRankingSourceInited();
         const cacheTime = forceReadCache ? 1/0 : 0;
         const sources = this.getTrackerSources();
-        const requireFresh = !forceReadCache && this.status === 'in_progress' && [Server.cn, Server.jp].includes(this.server);
-        const freshSince = Date.now() - 45 * 60 * 1000;
-        let fallback: object | null = null;
-        let newestTime = -Infinity;
 
-        for (let i = 0; i < sources.length; i++) {
+        for (let i = startIndex; i < sources.length; i++) {
+            // 仅 star_viewer 受档位白名单限制；local_gs（本地 GarupaSpeedTracker）原生支持 400 档，不做限制
+            if (sources[i].name == 'star_viewer' && !STAR_VIEWER_TIER_LIST.includes(this.tier)) {
+                continue;
+            }
             try {
                 const data = await callAPIAndCacheResponse(
                     `${sources[i].url}/api/tracker/data?server=${<number>this.server}&event=${this.eventId}&tier=${this.tier}`,
                     cacheTime, 3
                 );
-                if (data?.['result'] === false || !Array.isArray(data?.['cutoffs'])) continue;
-                if (!data['cutoffs'].length) {
-                    fallback ??= data;
-                    continue;
-                }
-                const latestTime = Number(data['cutoffs'].at(-1).time);
-                if (requireFresh && latestTime < freshSince) {
-                    if (latestTime > newestTime) {
-                        fallback = data;
-                        newestTime = latestTime;
-                    }
-                    logger('Cutoff.ts/tryTrackerSources', `${sources[i].name} 数据超过45分钟未更新，尝试下一个数据源`);
+                if (data?.['result'] === false) {
                     continue;
                 }
                 return data;
@@ -119,7 +123,57 @@ export class Cutoff {
                 }
             }
         }
-        return fallback;
+        return null;
+    }
+    //当日增计算出现插值天数(!)时, 按回退链尝试各数据源, 采用插值天数严格更少的数据源, 否则保持原数据
+    private async tryFallbackSourcesForDailyIncrement(forceReadCache: boolean) {
+        if (!this.cutoffs || this.cutoffs.length === 0) {
+            return
+        }
+        if (!this.dailyIncrementInvalidDays || this.dailyIncrementInvalidDays.length === 0) {
+            return
+        }
+        const invalidCount = this.dailyIncrementInvalidDays.length
+        await ensureLocalRankingSourceInited();
+        const sources = this.getTrackerSources()
+        const cacheTime = forceReadCache ? 1/0 : 0
+        for (let i = 0; i < sources.length; i++) {
+            if (sources[i].name == 'star_viewer' && !STAR_VIEWER_TIER_LIST.includes(this.tier)) {
+                continue
+            }
+            let data
+            try {
+                data = await callAPIAndCacheResponse(
+                    `${sources[i].url}/api/tracker/data?server=${<number>this.server}&event=${this.eventId}&tier=${this.tier}`,
+                    cacheTime, 3
+                );
+            } catch (e) {
+                logger('Cutoff.ts/tryFallbackSourcesForDailyIncrement', `${sources[i].name}获取失败，跳过 (e${this.eventId} t${this.tier}): ${e.message}`)
+                continue
+            }
+            if (data?.['result'] === false) {
+                continue
+            }
+            const altCutoffs = data?.['cutoffs'] as { time: number, ep: number }[]
+            if (!altCutoffs || altCutoffs.length === 0 || altCutoffs === this.cutoffs) {
+                continue
+            }
+            let altResult: { dailyIncrement: string[], invalidDays: number[] }
+            try {
+                altResult = this.computeDailyIncrementFrom(altCutoffs)
+            }
+            catch (e) {
+                logger('Cutoff.ts/tryFallbackSourcesForDailyIncrement', `${sources[i].name}日增计算失败，跳过 (e${this.eventId} t${this.tier}): ${e.message}`)
+                continue
+            }
+            if (altResult.invalidDays.length < invalidCount) {
+                logger('Cutoff.ts/tryFallbackSourcesForDailyIncrement', `e${this.eventId} ${Server[this.server]} t${this.tier}: ${sources[i].name} 日增插值 ${altResult.invalidDays.length} 天, 少于当前数据源 ${invalidCount} 天, 采用回退数据`)
+                this.cutoffs = altCutoffs
+                this.latestCutoff = altCutoffs[altCutoffs.length - 1]
+                this.getDailyIncrement()
+                return
+            }
+        }
     }
     async initFull() {
         if (this.isInitfull) {
@@ -136,6 +190,35 @@ export class Cutoff {
             if (!cutoffData){
                 this.isExist = false;
                 return
+            }
+            // var dateNow = Date.now()
+            // 活动进行中：数据距当前超过45分钟视为不实时；活动已结束后数据不再更新，改为校验末点是否接近活动结束时间（阈值与2天后的缓存校验一致）
+            const eventEnded = time > this.endAt
+            const lastDataTime = cutoffData["cutoffs"]?.length ? cutoffData["cutoffs"][cutoffData["cutoffs"].length - 1].time : null
+            const dataOutdated = lastDataTime != null && (eventEnded ? this.endAt - lastDataTime > 410000 : time - lastDataTime >= 2700000)
+            if (this.server == Server.cn && dataOutdated){   // CN: 主数据源数据校验不通过，按回退链尝试后续数据源
+                const sourceNames = this.getTrackerSources().map(s => s.name)
+                logger('Cutoff.ts/initFull', `CN主数据源(${sourceNames[0]})数据${eventEnded ? '完整性' : '实时性(>45分钟)'}校验不通过，尝试回退`)
+                var cutoffData2 = await this.tryTrackerSources(false, 1);
+                if (cutoffData2?.["cutoffs"]?.length && cutoffData2["cutoffs"][cutoffData2["cutoffs"].length-1].time > lastDataTime){
+                    cutoffData = cutoffData2;
+                    logger('Cutoff.ts/initFull', `CN回退至${sourceNames[1]}数据源，数据更新`)
+                } else {
+                    var cutoffData3 = await this.tryTrackerSources(false, 2);
+                    if (cutoffData3?.["cutoffs"]?.length && cutoffData3["cutoffs"][cutoffData3["cutoffs"].length-1].time > lastDataTime){
+                        cutoffData = cutoffData3;
+                        logger('Cutoff.ts/initFull', `CN回退至${sourceNames[2]}数据源，数据更新`)
+                    }
+                }
+            }
+            if (this.server == Server.jp && dataOutdated){   // JP: 主数据源数据校验不通过，按回退链尝试后续数据源
+                const sourceNames = this.getTrackerSources().map(s => s.name)
+                logger('Cutoff.ts/initFull', `JP主数据源(${sourceNames[0]})数据${eventEnded ? '完整性' : '实时性(>45分钟)'}校验不通过，尝试回退`)
+                var cutoffData2 = await this.tryTrackerSources(false, 1);
+                if (cutoffData2?.["cutoffs"]?.length && cutoffData2["cutoffs"][cutoffData2["cutoffs"].length-1].time > lastDataTime){
+                    cutoffData = cutoffData2;
+                    logger('Cutoff.ts/initFull', `JP回退至${sourceNames[1]}数据源，数据更新`)
+                }
             }
         }
         else {
@@ -182,6 +265,13 @@ export class Cutoff {
         catch{
 
         }
+        //若当前数据源的日增存在插值(!), 回退到其余数据源获取更完整的数据
+        try {
+            await this.tryFallbackSourcesForDailyIncrement(!(time < this.endAt + 1000 * 60 * 60 * 24 * 2))
+        }
+        catch (e) {
+            logger('Cutoff.ts/initFull', `日增数据源回退失败 (e${this.eventId} t${this.tier}): ${e.message}`)
+        }
         if (this.status == 'in_progress') {
             await this.predict()
         }
@@ -194,9 +284,11 @@ export class Cutoff {
         // 保留 medley 分支现有的国服外部预测服务及其历史/走势曲线。
         if (this.server == Server.cn) {
             try {
-                const data = await getJsonAndSave(
-                    `${predictServerURL}${this.eventId}?server=${this.server}&tier=${this.tier}`
+                const response = await axios.get(
+                    `${predictServerURL}${this.eventId}?server=${this.server}&tier=${this.tier}`,
+                    { timeout: 30000, ...keepAliveAxiosConfig(`${predictServerURL}${this.eventId}?server=${this.server}&tier=${this.tier}`) }
                 );
+                const data = response.data;
                 this.history = data["history"] ?? [];
                 this.prefix_curve = data["latest_slice"]?.["prefix_curve"] ?? [];
                 this.predictEP = data["latest_slice"]?.["total_sum_hat"] ?? 0;
@@ -282,32 +374,53 @@ export class Cutoff {
         }
     }
     getDailyIncrement(){
-        let score:number[] = []
-        let time:number[] = []
         if (!this.cutoffs || this.cutoffs.length === 0){
             return
         }
-        for (const c of this.cutoffs) {
+        const result = this.computeDailyIncrementFrom(this.cutoffs)
+        this.dailyIncrement = result.dailyIncrement
+        this.dailyIncrementInvalidDays = result.invalidDays
+    }
+    //对给定的档线数据计算日增(单位:万), 同时返回插值天数索引, 供数据源回退比较使用。要求cutoffs非空
+    computeDailyIncrementFrom(cutoffs: { time: number, ep: number }[]): { dailyIncrement: string[], invalidDays: number[] }{
+        let score:number[] = []
+        let time:number[] = []
+        // 收集 3:40~3:50 UTC 窗口内的数据点，每天只保留最接近3:45的一个
+        let candidatePoints: { ep: number, time: number, day: number, minutesDiff: number }[] = []
+        for (const c of cutoffs) {
             const timestamp = normalizeTimestamp(c.time)
             const date = getDateByServerTimezone(timestamp, this.server)
-            if ((this.server == Server.cn || this.server == Server.tw || this.server == Server.jp) && date.getUTCHours() === 3 && date.getUTCMinutes() === 45) {
-                score.push(c.ep)
-                time.push(timestamp)
+            if ((this.server == Server.cn || this.server == Server.tw || this.server == Server.jp) && date.getUTCHours() === 3 && date.getUTCMinutes() >= 40 && date.getUTCMinutes() <= 50) {
+                candidatePoints.push({ ep: c.ep, time: timestamp, day: this.getDaysOfEvent(timestamp), minutesDiff: Math.abs(date.getUTCMinutes() - 45) })
             }
+        }
+        // 按天去重，每天只保留最接近3:45的数据点，并按时间顺序排列
+        let dayMap = new Map<number, { ep: number, time: number, minutesDiff: number }>()
+        for (const p of candidatePoints) {
+            const existing = dayMap.get(p.day)
+            if (!existing || p.minutesDiff < existing.minutesDiff) {
+                dayMap.set(p.day, { ep: p.ep, time: p.time, minutesDiff: p.minutesDiff })
+            }
+        }
+        let sortedDays = Array.from(dayMap.keys()).sort((a, b) => a - b)
+        for (const day of sortedDays) {
+            const p = dayMap.get(day)!
+            score.push(p.ep)
+            time.push(p.time)
         }
         let dailyIncrement = []
         let dailyIncrementInvaildDays:number[]  = []
         let scoreFinal:number[] = []
         var j = 0   // 临时天数存放
-        var cutoffLastDataDays = this.getDaysOfEvent(this.cutoffs[this.cutoffs.length-1].time)   // 最后一个数据的天数
+        var cutoffLastDataDays = this.getDaysOfEvent(cutoffs[cutoffs.length-1].time)   // 最后一个数据的天数
         // 头处理
         if (score.length == 0){
-            for (var i = 0;i<=this.getDaysOfEvent(this.cutoffs[this.cutoffs.length-1].time);i++){
-                if (this.getDaysOfEvent(this.cutoffs[this.cutoffs.length-1].time) == 0){
-                    scoreFinal.push(this.cutoffs[this.cutoffs.length-1].ep)
+            for (var i = 0;i<=this.getDaysOfEvent(cutoffs[cutoffs.length-1].time);i++){
+                if (this.getDaysOfEvent(cutoffs[cutoffs.length-1].time) == 0){
+                    scoreFinal.push(cutoffs[cutoffs.length-1].ep)
                     break
                 }
-                let avgIncrementValue = Math.round(((this.cutoffs[this.cutoffs.length-1].ep)/(this.getDaysOfEvent(this.cutoffs[this.cutoffs.length-1].time))))    // 计算丢失的天数的平均增量
+                let avgIncrementValue = Math.round(((cutoffs[cutoffs.length-1].ep)/(this.getDaysOfEvent(cutoffs[cutoffs.length-1].time))))    // 计算丢失的天数的平均增量
                 scoreFinal.push(Math.round(avgIncrementValue * (i+1)))  // 把丢失的天数的数据补全
                 dailyIncrementInvaildDays.push(scoreFinal.length-1)  // 记录增量数据不完整的天数位置
                 j++ // 增加一天
@@ -342,7 +455,7 @@ export class Cutoff {
         if (score.length != 0){
             for(var i = 0;i<cutoffLastDataDays - this.getDaysOfEvent(time[time.length-1]);i++){   // 如果tracker最后一个数据日期跟score最后一个数据的日期有差异，说名是尾巴，要处理
                 if (score.length == 0) break
-                let avgIncrementValue = Math.round(((this.cutoffs[this.cutoffs.length-1].ep - score[score.length-1]))/(cutoffLastDataDays - this.getDaysOfEvent(time[time.length-1])))    // 计算丢失的天数的平均增量
+                let avgIncrementValue = Math.round(((cutoffs[cutoffs.length-1].ep - score[score.length-1]))/(cutoffLastDataDays - this.getDaysOfEvent(time[time.length-1])))    // 计算丢失的天数的平均增量
                 scoreFinal.push(Math.round(score[score.length-1] + avgIncrementValue * (i+1)))  // 把丢失的天数的数据补全
                 if(cutoffLastDataDays - this.getDaysOfEvent(time[time.length-1]) > 1)dailyIncrementInvaildDays.push(scoreFinal.length-1)
                 j++ // 因该是没什么用的了，还是加一下吧
@@ -356,7 +469,7 @@ export class Cutoff {
                 dailyIncrement.push(`${Math.round((scoreFinal[i] - scoreFinal[i-1])/10000)}${dailyIncrementInvaildDays.includes(i) ? '!' : ''}` )
             }
         }
-        this.dailyIncrement = dailyIncrement
+        return { dailyIncrement, invalidDays: dailyIncrementInvaildDays }
     }
     getYesterdayIncrementRate(){
         if (!this.cutoffs || this.cutoffs.length === 0){
@@ -372,7 +485,7 @@ export class Cutoff {
             lastCutoffTime = this.cutoffs[this.cutoffs.length-2].time
             usePrevPoint = true
         }
-        if (UTCMin == 45 && UTCHour == 3) lengthLimit++
+        if (UTCHour == 3 && UTCMin >= 40 && UTCMin <= 50) lengthLimit++
         let curEventDays = this.getDaysOfEvent(lastCutoffTime)
         let lastCutoffEp = this.cutoffs[this.cutoffs.length-(usePrevPoint?2:1)].ep
 
@@ -388,6 +501,8 @@ export class Cutoff {
         // 收集昨天的所有数据点，用于找最近邻
         let yesterdayPoints: { ep: number, time: number }[] = []
 
+        // 收集 3:40~3:50 UTC 窗口内的数据点，每天只保留最接近3:45的一个
+        let candidatePoints: { ep: number, time: number, day: number, minutesDiff: number }[] = []
         for (const c of this.cutoffs) {
             const timestamp = normalizeTimestamp(c.time)
             const d = this.getDaysOfEvent(timestamp)
@@ -395,14 +510,27 @@ export class Cutoff {
                 continue
             }
             const date = getDateByServerTimezone(timestamp, this.server)
-            if ((this.server == Server.cn || this.server == Server.tw || this.server == Server.jp) && date.getUTCHours() === 3 && date.getUTCMinutes() === 45) {
-                score.push(c.ep)
-                time.push(timestamp)
+            if ((this.server == Server.cn || this.server == Server.tw || this.server == Server.jp) && date.getUTCHours() === 3 && date.getUTCMinutes() >= 40 && date.getUTCMinutes() <= 50) {
+                candidatePoints.push({ ep: c.ep, time: timestamp, day: d, minutesDiff: Math.abs(date.getUTCMinutes() - 45) })
             }
             // 收集昨天的所有数据点（不管什么时分，全收）
             if (d == (curEventDays - 1)) {
                 yesterdayPoints.push({ ep: c.ep, time: timestamp })
             }
+        }
+        // 按天去重，每天只保留最接近3:45的数据点，并按时间顺序排列
+        let dayMap = new Map<number, { ep: number, time: number, minutesDiff: number }>()
+        for (const p of candidatePoints) {
+            const existing = dayMap.get(p.day)
+            if (!existing || p.minutesDiff < existing.minutesDiff) {
+                dayMap.set(p.day, { ep: p.ep, time: p.time, minutesDiff: p.minutesDiff })
+            }
+        }
+        let sortedDays = Array.from(dayMap.keys()).sort((a, b) => a - b)
+        for (const day of sortedDays) {
+            const p = dayMap.get(day)!
+            score.push(p.ep)
+            time.push(p.time)
         }
 
         if (score.length < lengthLimit) return '数据缺失'

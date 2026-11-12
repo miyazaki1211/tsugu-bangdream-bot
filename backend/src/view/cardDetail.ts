@@ -28,6 +28,15 @@ async function drawCardDetail(cardId: number, displayedServerList: Server[] = gl
     await card.initFull()
     var source = card.source
 
+    var illusImageCache: { [key: string]: Image } = {}
+    var getIllus = async function (trainingStatus: boolean): Promise<Image> {
+        const key = trainingStatus ? 'trained' : 'normal'
+        if (!illusImageCache[key]) {
+            illusImageCache[key] = await card.getCardIllustrationImage(trainingStatus)
+        }
+        return illusImageCache[key]
+    }
+
     var list: Array<Image | Canvas> = []
 
     //标题
@@ -41,7 +50,8 @@ async function drawCardDetail(cardId: number, displayedServerList: Server[] = gl
         list.push(await drawCardIllustration({
             card: card,
             trainingStatus: element,
-            isList: true
+            isList: true,
+            illustrationImage: await getIllus(element),
         }))
         list.push(new Canvas(800, 30))
     }
@@ -197,7 +207,7 @@ async function drawCardDetail(cardId: number, displayedServerList: Server[] = gl
         var BGimage: Image
     }
     else {
-        var BGimage = await card.getCardIllustrationImage(true)
+        var BGimage = await getIllus(true)
     }
     
     var buffer = await outputFinalBuffer({

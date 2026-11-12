@@ -5,6 +5,7 @@ import { drawList } from '@/components/list';
 import { stackImage } from '@/components/utils';
 import { Server } from '@/types/Server';
 import { MonthlyRankingCutoff, MonthlyRankingCutoffTop } from '@/types/MonthlyRankingCutoff';
+import { getSinglePlayDiffs } from '@/view/monthlyRankingCutoffEventTop';
 
 export async function drawMonthlyRankingCutoffChart(cutoffList: MonthlyRankingCutoff[], setStartToZero = false, server: Server = Server['jp']) {
     const datasets = [];
@@ -142,4 +143,49 @@ export async function drawMonthlyRankingCutOffTopSingleChart(monthlyRankingCutof
 
     var data = { datasets: datasets }
     return await drawTimeLineChart({ data, start: new Date(monthlyRankingCutoffTop.startAt), end: new Date(monthlyRankingCutoffTop.endAt), setStartToZero }, true)
+}
+
+/**
+ * 绘制月榜单人单把出分（点阵图/散点图）
+ * @param monthlyRankingCutoffTop 原始数据对象
+ * @param playerUid 玩家ID
+ * @param limit 过滤
+ */
+export async function drawMonthlyRankingSinglePointChart(monthlyRankingCutoffTop: MonthlyRankingCutoffTop, playerUid: number, limit?: string) {
+    if (!monthlyRankingCutoffTop) return new Canvas(1, 1);
+
+    // 调用提取出的逻辑获取数据
+    const diffs = getSinglePlayDiffs(monthlyRankingCutoffTop.points, playerUid, limit);
+
+    if (diffs.length === 0) return new Canvas(1, 1);
+
+    // 转换为 Chart.js 需要的格式
+    const perPlayData = diffs.map(d => ({
+        x: new Date(d.time),
+        y: d.value
+    }));
+
+    const tempColor = getPresetColor(0);
+    const labelText = `${monthlyRankingCutoffTop.getUserNameById(playerUid).replace(/\[[^\]]*\]/g, "")} - 单把出分${limit ? ` (${limit})` : ''}`;
+    const datasets = [{
+        label: labelText,
+        data: perPlayData,
+        backgroundColor: tempColor.getRGBA(0.6),
+        borderColor: tempColor.getRGBA(0.6),
+        pointRadius: 1.5,
+        pointBorderWidth: 1,
+        pointHoverRadius: 3,
+        showLine: false,
+        fill: false
+    }];
+
+    const data = { datasets: datasets };
+
+    return await drawTimeLineChart({
+        data,
+        start: new Date(monthlyRankingCutoffTop.startAt),
+        end: new Date(monthlyRankingCutoffTop.endAt),
+        setStartToZero: false,
+        setYStartToZero: false,
+    }, true);
 }

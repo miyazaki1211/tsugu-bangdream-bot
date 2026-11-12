@@ -1,8 +1,9 @@
 import { Server } from "@/types/Server";
 import { Event } from '@/types/Event';
+import { callAPIAndCacheResponse } from "@/api/getApi";
+import { ensureLocalRankingSourceInited } from "@/api/rankingSourceInit";
 import { Bestdoriurl, EVENTRANKING_TURNS, resolveSourceUrls } from "@/config";
-import { getTopRankingData } from '@/api/topRanking';
-import { TopSnapshot, rankingAt, topUsers } from '@/types/TopRanking';
+import { logger } from '@/logger';
 
 
 export class CutoffEventTop{
@@ -18,7 +19,6 @@ export class CutoffEventTop{
         uid:number,
         value:number
     }[];
-    snapshots: TopSnapshot[] = [];
     users:{
         uid:number,
         name:string,
@@ -42,7 +42,10 @@ export class CutoffEventTop{
         this.startAt = event.startAt[server]
         this.endAt = event.endAt[server]
         var time = new Date().getTime()
-        if (time < event.startAt[this.server]) {
+        if (event.startAt[this.server] == null || event.endAt[this.server] == null) {
+            this.status = 'in_progress';
+        }
+        else if (time < event.startAt[this.server]) {
             this.status = 'not_start';
         }
         else if (time > event.endAt[this.server]) {
@@ -61,8 +64,21 @@ export class CutoffEventTop{
         return sources[0]?.url || Bestdoriurl;
     }
     async getFinalEventTopData (interval:number = 3600000){
-        return getTopRankingData(this.server, EVENTRANKING_TURNS, 'event', this.eventId,
-            `/api/eventtop/data?server=${this.server}&event=${this.eventId}&mid=0&interval=${interval}`);
+        await ensureLocalRankingSourceInited();
+        const sources = this.getEventTopSources();
+        for (let i = 0; i < sources.length; i++) {
+            try {
+                return await callAPIAndCacheResponse(
+                    `${sources[i].url}/api/eventtop/data?server=${<number>this.server}&event=${this.eventId}&mid=0&interval=${interval}`,
+                    0, 3
+                );
+            } catch (e) {
+                if (e.response?.status != 404) {
+                    logger('CutoffEventTop.ts/getFinalEventTopData', `${sources[i].name}获取失败，尝试下一个`);
+                }
+            }
+        }
+        return null;
     }
     async initFull(interval = 3600000){
         if (!this.isExist){
@@ -76,11 +92,37 @@ export class CutoffEventTop{
             this.isExist = false;
             return;
         }
-        this.points = topData.points;
-        this.snapshots = topData.snapshots;
-        this.users = topUsers(topData);
-        this.isExist = this.points.length > 0 || this.snapshots.length > 0;
-        this.isInitfull = true;
+        this.isExist = true;
+        this.points = (topData['points'] ?? []).map((point) => ({
+            time: Number(point.time ?? point.timestamp),
+            uid: point.uid,
+            value: point.value,
+        })).filter((point) => Number.isFinite(point.time));
+        this.users = topData['users'] as {
+            uid:number,
+            name:string,
+            introduction:string,
+            rank:number,
+            sid:number,
+            strained:number,
+            degrees:number[],
+            ranking:number,
+            currentPt:number
+        }[];
+        if(this.points.length == 0 || this.users.length == 0){//如果没有数据，返回不存在
+            this.isExist = false
+            return
+        }
+        var latestRanking = this.getLatestRanking();
+        for(let i =0;i<this.users.length;i++){
+            for(let j =0;j<latestRanking.length;j++){
+                if(this.users[i].uid==latestRanking[j].uid){
+                    this.users[i].ranking = j+1;
+                    this.users[i].currentPt = latestRanking[j].point;
+                    break;
+                }
+            }
+        }
     }
     getChartData(setStartToZero = false):{[key:number]:{x:Date,y:number}[]}{
         if (this.isExist == false) {
@@ -111,11 +153,16 @@ export class CutoffEventTop{
         }
         return chartDate;
     }
-    getRankingAt(time = Infinity) {
-        return rankingAt(this.snapshots, time);
-    }
-    getLatestRanking(): { uid: number, point: number }[] {
-        return this.getRankingAt().map(({ uid, value }) => ({ uid, point: value }));
+    getLatestRanking():{uid:number,point:number}[]{
+        const result:{uid:number,point:number}[] = []
+        if (!this.points?.length) return result
+        //points 可达数十万条，禁用 Math.max(...arr) 展开 —— 会超出调用栈参数上限
+        const latestTime = this.points.reduce((max, point) => point.time > max ? point.time : max, -Infinity)
+        const latestPoints = this.points.filter(point => point.time === latestTime)
+        const snapshot = latestPoints.length ? latestPoints : this.points.slice(-10)
+        for (const element of snapshot) result.push({ uid: element.uid, point: element.value })
+        result.sort((a,b)=>b.point-a.point)
+        return result;
     }
     getUserByUid(id:number):{
         uid:number,
