@@ -162,6 +162,7 @@ router.post('/submit',
             const songText = resolvedSongIndex != undefined ? ` 第${resolvedSongIndex}首` : ''
             return res.send(listToBase64([`已记录 歌榜结榜: 玩家 ${playerShort} 第${ranking}名 ${score}分${songText} [活动${event.eventId}]`]));
         } catch (e) {
+            console.log(e);
             res.status(500).send({ status: 'failed', data: '内部错误' });
         }
     }
@@ -204,6 +205,7 @@ router.post('/query',
             })
             res.send(listToBase64(result));
         } catch (e) {
+            console.log(e);
             res.status(500).send({ status: 'failed', data: '内部错误' });
         }
     }
@@ -230,6 +232,7 @@ router.post('/delete',
             }
             res.send(listToBase64([`已删除 活动${latestEventId} 中玩家 ${uid} 的结榜数据`]));
         } catch (e) {
+            console.log(e);
             res.status(500).send({ status: 'failed', data: '内部错误' });
         }
     }

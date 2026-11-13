@@ -30,6 +30,7 @@ router.post(
             const result = await commandMonthlyTopRateRanking(getServerByServerId(mainServer), compress, monthlyRankingId, length, date ? new Date(date) : undefined, compareTier, compareUid);
             res.send(listToBase64(result));
         } catch (e) {
+            console.log(e);
             res.status(500).send({ status: 'failed', data: '内部错误' });
         }
     }

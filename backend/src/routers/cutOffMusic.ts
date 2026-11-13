@@ -79,6 +79,8 @@ export async function commandCutOffMusic(
         return [`错误: 活动${eventId}在${serverNameFullList[mainServer]}没有歌榜数据`];
     }
 
+    // 曲目解析: 组曲(medley)统一为合计谱(musicId=1), 无需选择歌曲;
+    // 对邦(versus)每服仅一曲自动选择; 挑战(challenge)按序号(1起, 缺省第1首)选择
     const index = musicIndex ?? 1;
     if (event.eventType !== 'medley' && index > musics.length) {
         return [

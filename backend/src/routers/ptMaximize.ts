@@ -13,6 +13,7 @@ import { Event } from "@/types/Event";
 import { drawPtMaximizeResult } from "@/view/ptMaximize";
 import { PtConfig, DEFAULT_PT_CONFIG, DEFAULT_PT_SONG } from "@/types/BuildTypes";
 import { Song } from "@/types/Song";
+import { perfMark } from '@/logger';
 import {
     PtMaximizeResult,
     ApiEnvelope,
@@ -44,6 +45,9 @@ const optimizeCalcApiUrl = (() => {
     return `${baseUrl}/v1/pt-maximize`
 })();
 
+// ============================================================
+//  .env 默认配置读取
+// ============================================================
 
 const PT_DEFAULTS = {
     leaderSelection:
@@ -51,6 +55,10 @@ const PT_DEFAULTS = {
     minimumPersonalStat: Number(process.env.PT_DEFAULT_MINIMUM_PERSONAL_STAT) || 0,
 } as const;
 
+// ============================================================
+//  eventType → 支持的 liveVariant 兼容矩阵 + 默认选择
+//  参考: API 文档第 66-76 行兼容矩阵
+// ============================================================
 
 const EVENT_LIVE_MATRIX: Record<
     string,
@@ -156,6 +164,7 @@ router.post(
             );
             res.send(listToBase64(result));
         } catch (e) {
+            console.log(e);
             const message = e instanceof Error ? e.message : '内部错误';
             res.status(500).send(listToBase64([message]));
         }
@@ -202,7 +211,9 @@ export async function commandPtMaximize(
     if (currentEvent.eventType == 'medley') {
         return ['PT计算不支持组曲(medley)活动, 请使用 开始计算; 切换活动请发送 组队计算 <活动ID>'];
     }
+    const perf = perfMark(`commandPtMaximize e${currentEvent.eventId} ${Server[mainServer]}`)
     await currentEvent.initFull();
+    perf('活动数据获取');
     const evId = currentEvent.eventId;
     const eventType = currentEvent.eventType;
 
@@ -266,6 +277,7 @@ export async function commandPtMaximize(
         eventId: evId,
         request,
     };
+    console.log('ptMaximize request:', JSON.stringify(reqBody));
 
     let response;
     try {
@@ -292,6 +304,7 @@ export async function commandPtMaximize(
     if (body.status !== 'ok' || !body.data) {
         return [body.message ?? '计算服务返回异常'];
     }
+    perf('计算服务请求');
 
     // 6. 渲染
     try {
@@ -307,8 +320,10 @@ export async function commandPtMaximize(
             compress,
             viewOpts,
         );
+        perf('结果渲染');
         return buffers;
     } catch (e) {
+        console.error('ptMaximize draw error:', e);
         return [
             'PT 结果渲染失败: ' +
                 (e instanceof Error ? e.message : String(e)),

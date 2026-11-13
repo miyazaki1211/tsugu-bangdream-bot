@@ -28,6 +28,8 @@ async function drawCardDetail(cardId: number, displayedServerList: Server[] = gl
     await card.initFull()
     var source = card.source
 
+    //缓存本次请求内已下载解码的原始立绘，供插画绘制与背景生成复用，
+    //避免同一张立绘被重复读盘+解码
     var illusImageCache: { [key: string]: Image } = {}
     var getIllus = async function (trainingStatus: boolean): Promise<Image> {
         const key = trainingStatus ? 'trained' : 'normal'

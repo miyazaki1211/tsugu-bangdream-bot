@@ -41,10 +41,12 @@ router.post('/',
                     await userDB.updateUser(platform, userId, { tokenPlatform: result.platform });
                 }
                 catch (e) {
+                    console.log(e);
                 }
             }
             res.send(listToBase64(result.result));
         } catch (e) {
+            console.log(e);
             res.status(500).send({ status: 'failed', data: '内部错误' });
         }
     }

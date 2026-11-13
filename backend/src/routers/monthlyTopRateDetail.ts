@@ -31,6 +31,7 @@ router.post(
             const result = await commandMonthlyTopRateDetail(getServerByServerId(mainServer), monthlyRankingId, playerId, tier, compress, day, limit, count);
             res.send(listToBase64(result));
         } catch (e) {
+            console.log(e);
             res.status(500).send({ status: 'failed', data: '内部错误' });
         }
     }

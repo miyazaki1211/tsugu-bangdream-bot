@@ -22,6 +22,7 @@ import { Attribute } from '@/types/Attribute'
 import mainAPI from '@/types/_Main';
 import { Character } from '@/types/Character';
 import { drawRoundedRectWithText } from '@/image/drawRect';
+import { perfMark } from '@/logger';
 export async function drawTeamBuildDetail(player: playerDetail, server: Server, useEasyBG: boolean, compress: boolean) {
     const event = new Event(player.currentEvent)
     if (!event.isExist) {
@@ -31,7 +32,9 @@ export async function drawTeamBuildDetail(player: playerDetail, server: Server, 
     if (!event.startAt[defaultServer]) {
         defaultServer = Server.jp
     }
+    const perf = perfMark(`drawTeamBuildDetail e${player.currentEvent} ${Server[server]}`)
     await event.initFull()
+    perf('活动数据获取')
     var list: Array<Image | Canvas> = []
     const widthMax = 1200, line: Canvas = drawDottedLine({
         width: widthMax,
@@ -419,6 +422,7 @@ export async function drawTeamBuildDetail(player: playerDetail, server: Server, 
         compress: compress,
     })
 
+    perf('图片合成+压缩')
 
     return [buffer];
 }

@@ -1,3 +1,6 @@
+// 对应 bangdream-optimize POST /v1/micro-optimize 的响应类型
+// 参考文档: bangdream-optimize/docs/micro-optimize-design-draft.md §4
+// 卡详情、判定等字段以该文档为准; 未知字段忽略
 
 export interface MicroCard {
   cardId: number

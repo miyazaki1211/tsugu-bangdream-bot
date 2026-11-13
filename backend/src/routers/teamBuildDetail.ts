@@ -175,12 +175,14 @@ router.post('/importAllPlayerData',
             if (axios.isAxiosError(error) && error.response) {
                 const msg = (error.response.data as { message?: string })?.message;
                 const status = error.response.status;
+                console.log(`importAllPlayerData 上游错误: ${status} ${msg ?? ''}`);
                 if (status == 405) {
                     res.send(listToBase64(['错误: 令牌无效或已过期，请在私信中重新发送 设置令牌 扫码配置']));
                     return;
                 }
                 res.send(listToBase64([msg ? `错误: 查询玩家数据失败（${status} ${msg}）` : `错误: 查询玩家数据失败（${status}）`]));
             } else {
+                console.log(error);
                 res.send(listToBase64(['错误: 无法连接本地数据源，请稍后再试']));
             }
             return;
@@ -193,6 +195,7 @@ router.post('/importAllPlayerData',
                 await userDB.updateUser(platform, userId, { tokenPlatform: apiPlatform });
             }
             catch (e) {
+                console.log(e);
             }
         }
 
@@ -251,6 +254,7 @@ router.post('/importAllPlayerData',
             const result = await commandTeamBuildDetail(playerId, server, useEasyBG, compress, existingPlayer?.currentEvent);
             res.send(listToBase64(result));
         } catch (e) {
+            console.log(e);
             res.status(500).send({ status: 'failed', data: '内部错误' });
         }
     }

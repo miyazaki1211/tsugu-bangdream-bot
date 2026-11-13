@@ -72,6 +72,8 @@ function getMusicLabel(eventType: string, musicId: number): string {
     return `曲目 ${musicId}`
 }
 
+//过滤占位条目(如 5v5 活动的 uid=0 占位)后, 逐个绘制玩家卡片, 展示效果与查PT一致
+//cardWidthMax 提供时将卡片等比缩放到该宽度, 否则保持原生 800px(多列布局使用)
 async function drawBorderPlayerCards(players: BorderPlayer[], cardWidthMax?: number): Promise<Array<Image | Canvas>> {
     const list: Array<Image | Canvas> = []
     for (const player of players) {

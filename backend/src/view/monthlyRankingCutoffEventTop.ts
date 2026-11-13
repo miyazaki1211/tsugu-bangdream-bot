@@ -877,7 +877,7 @@ export function getRatingByPlayer(points: Array<{
         if (info.uid == playerId)
             map[info.time] = info.value
         if (info.time !== tmpTime) {
-            //防bd插入单独数据(2025.11.4 03:00:01仅出现t1玩家数据 导致其他t10玩家point列表出现-1)
+            //防bd插入单独数据(曾出现仅t1玩家数据 导致其他t10玩家point列表出现-1)
             if (tmpTime !== -1 && counts !== 10) {
                 delete map[tmpTime];
             }

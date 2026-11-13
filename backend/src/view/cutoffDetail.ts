@@ -14,15 +14,18 @@ import { statusName } from '@/config';
 import { loadImageFromPath } from '@/image/utils';
 import mainAPI from '@/types/_Main';
 import { getSpeedParams, getTwoHourSpeed } from '@/components/utils';
+import { perfMark } from '@/logger';
 
 export async function drawCutoffDetail(eventId: number, tier: number, mainServer: Server, compress: boolean): Promise<Array<Buffer | string>> {
     if (!mainAPI['events'][`${eventId}`]['endAt'][mainServer]) return [`错误: ${serverNameFullList[mainServer]} 活动不存在或未举办`]
+    const perf = perfMark(`drawCutoffDetail e${eventId} ${Server[mainServer]} t${tier}`)
     var event = new Event(eventId)
     var cutoff = new Cutoff(eventId, mainServer, tier)
     if (cutoff.isExist == false) {
         return [`错误: ${serverNameFullList[mainServer]} 活动或档线不存在`]
     }
     await cutoff.initFull()
+    perf('数据获取+预测')
     if(!cutoff.latestCutoff) return [`错误: ${serverNameFullList[mainServer]} 活动或档线暂不存在`]
     /*
     if (cutoff.isExist == false) {
@@ -134,6 +137,7 @@ export async function drawCutoffDetail(eventId: number, tier: number, mainServer
 
     //折线图
     list.push(await drawCutoffChart([cutoff]))
+    //perf('折线图')
 
     //创建最终输出数组
     var listImage = drawDatablock({ list })
@@ -150,6 +154,7 @@ export async function drawCutoffDetail(eventId: number, tier: number, mainServer
         useEasyBG: true,
         compress: compress,
     })
+    perf('图片合成+压缩')
 
     return [buffer];
 

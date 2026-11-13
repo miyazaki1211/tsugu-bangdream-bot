@@ -106,18 +106,23 @@ export class Cutoff {
         for (let i = startIndex; i < sources.length; i++) {
             // 仅 star_viewer 受档位白名单限制；local_gs（本地 GarupaSpeedTracker）原生支持 400 档，不做限制
             if (sources[i].name == 'star_viewer' && !STAR_VIEWER_TIER_LIST.includes(this.tier)) {
+                logger('Perf', `tracker source[${i}] star_viewer 不支持 t${this.tier}, 跳过 (e${this.eventId})`);
                 continue;
             }
+            const tSource = Date.now();
             try {
                 const data = await callAPIAndCacheResponse(
                     `${sources[i].url}/api/tracker/data?server=${<number>this.server}&event=${this.eventId}&tier=${this.tier}`,
                     cacheTime, 3
                 );
                 if (data?.['result'] === false) {
+                    logger('Perf', `tracker source[${i}] ${sources[i].name} empty ${Date.now() - tSource}ms (e${this.eventId} t${this.tier})`);
                     continue;
                 }
+                logger('Perf', `tracker source[${i}] ${sources[i].name} OK ${Date.now() - tSource}ms (e${this.eventId} t${this.tier})`);
                 return data;
             } catch (e) {
+                logger('Perf', `tracker source[${i}] ${sources[i].name} ERR ${Date.now() - tSource}ms ${e.message} (e${this.eventId} t${this.tier})`);
                 if (e.response?.status != 404) {
                     logger('Cutoff.ts/tryTrackerSources', `${sources[i].name}获取失败，尝试下一个`);
                 }
@@ -182,11 +187,13 @@ export class Cutoff {
         if (this.isExist == false) {
             return
         }
+        const perf = perfMark(`Cutoff.initFull e${this.eventId} ${Server[this.server]} t${this.tier} status=${this.status}`)
         let cutoffData
         //如果cutoff的活动已经结束，则使用缓存
         const time = new Date().getTime()
         if (time < this.endAt + 1000 * 60 * 60 * 24 * 2) {
             cutoffData = await this.getFinalCutoffsData()
+            perf('getFinalCutoffsData(no-cache)')
             if (!cutoffData){
                 this.isExist = false;
                 return
@@ -200,11 +207,13 @@ export class Cutoff {
                 const sourceNames = this.getTrackerSources().map(s => s.name)
                 logger('Cutoff.ts/initFull', `CN主数据源(${sourceNames[0]})数据${eventEnded ? '完整性' : '实时性(>45分钟)'}校验不通过，尝试回退`)
                 var cutoffData2 = await this.tryTrackerSources(false, 1);
+                perf(`cnFallback->${sourceNames[1]}`)
                 if (cutoffData2?.["cutoffs"]?.length && cutoffData2["cutoffs"][cutoffData2["cutoffs"].length-1].time > lastDataTime){
                     cutoffData = cutoffData2;
                     logger('Cutoff.ts/initFull', `CN回退至${sourceNames[1]}数据源，数据更新`)
                 } else {
                     var cutoffData3 = await this.tryTrackerSources(false, 2);
+                    perf(`cnFallback->${sourceNames[2]}`)
                     if (cutoffData3?.["cutoffs"]?.length && cutoffData3["cutoffs"][cutoffData3["cutoffs"].length-1].time > lastDataTime){
                         cutoffData = cutoffData3;
                         logger('Cutoff.ts/initFull', `CN回退至${sourceNames[2]}数据源，数据更新`)
@@ -215,6 +224,7 @@ export class Cutoff {
                 const sourceNames = this.getTrackerSources().map(s => s.name)
                 logger('Cutoff.ts/initFull', `JP主数据源(${sourceNames[0]})数据${eventEnded ? '完整性' : '实时性(>45分钟)'}校验不通过，尝试回退`)
                 var cutoffData2 = await this.tryTrackerSources(false, 1);
+                perf(`jpFallback->${sourceNames[1]}`)
                 if (cutoffData2?.["cutoffs"]?.length && cutoffData2["cutoffs"][cutoffData2["cutoffs"].length-1].time > lastDataTime){
                     cutoffData = cutoffData2;
                     logger('Cutoff.ts/initFull', `JP回退至${sourceNames[1]}数据源，数据更新`)
@@ -224,9 +234,11 @@ export class Cutoff {
         else {
             var useCache = true
             cutoffData = await this.getFinalCutoffsData(useCache)
+            perf('getFinalCutoffsData(cache)')
             // 检查缓存是否合法
             if (cutoffData?.["cutoffs"] && (cutoffData["cutoffs"].length==0|| (cutoffData["cutoffs"].length!=0 && this.endAt - cutoffData["cutoffs"][cutoffData["cutoffs"].length-1].time >410000) )){
                 cutoffData = await this.getFinalCutoffsData()
+                perf('getFinalCutoffsData(cacheInvalid-refetch)')
             } //如果最后一个记录的时间减去endAt，校验如果差距太大就要更新
         }
         if (cutoffData == undefined) {
@@ -274,6 +286,7 @@ export class Cutoff {
         }
         if (this.status == 'in_progress') {
             await this.predict()
+            perf('predict')
         }
         this.isInitfull = true
     }
@@ -284,10 +297,12 @@ export class Cutoff {
         // 保留 medley 分支现有的国服外部预测服务及其历史/走势曲线。
         if (this.server == Server.cn) {
             try {
+                const tPredict = Date.now();
                 const response = await axios.get(
                     `${predictServerURL}${this.eventId}?server=${this.server}&tier=${this.tier}`,
                     { timeout: 30000, ...keepAliveAxiosConfig(`${predictServerURL}${this.eventId}?server=${this.server}&tier=${this.tier}`) }
                 );
+                logger('Perf', `Cutoff.predict | external predict e${this.eventId} t${this.tier} took=${Date.now() - tPredict}ms`);
                 const data = response.data;
                 this.history = data["history"] ?? [];
                 this.prefix_curve = data["latest_slice"]?.["prefix_curve"] ?? [];

@@ -12,6 +12,9 @@ import { extractTrackerErrorMessage } from '@/api/trackerError';
  * GET /api/monthlyRanking/borderPlayers 小节。
  */
 
+//广告位玩家条目（PT 榜/歌榜/月榜通用）
+//tier=档位名次, point=PT 或歌曲分数, rank=玩家等级, sid/strained=头像卡与特训状态,
+//degrees=佩戴牌子; 其余 raw 字段（ownFlg/userDeck 等）此处不使用, 缺省时接口会省略
 export interface BorderPlayer {
     tier: number
     uid: number

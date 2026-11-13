@@ -4,6 +4,11 @@ import * as tls from 'tls';
 import * as net from 'net';
 import { logger } from '@/logger';
 
+//共享 keep-alive 连接池参数：
+//- keepAlive: true       复用 TCP 连接，省去每次请求的 TCP/TLS 握手
+//- keepAliveMsecs: 60000 空闲连接的 TCP 保活探测间隔
+//- timeout: 60000        空闲 socket 在连接池中闲置超过 60 秒即被 Agent 销毁断开，
+//                        60 秒内有新请求则继续复用
 const agentOptions = {
     keepAlive: true,
     keepAliveMsecs: 60000,
@@ -47,6 +52,9 @@ function applySocketOptions(socket: tls.TLSSocket | net.Socket, options: any): v
     socket.setKeepAlive(true, options.keepAliveMsecs || 1000);
 }
 
+//http 目标的代理隧道 Agent：CONNECT 隧道 + 裸 socket（明文 HTTP 经隧道直达目标）
+//注意必须继承 http.Agent —— Node 会用 agent.protocol 校验请求协议，
+//若把 https.Agent 子类实例当作 httpAgent 传给 http 请求会抛 ERR_INVALID_PROTOCOL
 class HttpOverHttpAgent extends http.Agent {
     proxyUrl: URL;
     sockOptions: http.AgentOptions;
@@ -134,6 +142,10 @@ function isNoProxyHost(hostname: string): boolean {
     return false;
 }
 
+//按目标 URL 的协议解析应使用的代理环境变量（与 axios 的 proxy-from-env 语义一致）：
+//- https 目标读 HTTPS_PROXY/https_proxy/ALL_PROXY/all_proxy
+//- http  目标读 HTTP_PROXY/http_proxy/ALL_PROXY/all_proxy
+//注意 HTTPS_PROXY 不作用于 http 目标、HTTP_PROXY 不作用于 https 目标
 function getProxyForUrl(url: string): URL | null {
     let protocol = '';
     let hostname = '';
@@ -180,6 +192,10 @@ function getHttpsTunnelAgent(proxy: URL): HttpsOverHttpAgent {
     return httpsTunnelAgentCache.get(key) as HttpsOverHttpAgent;
 }
 
+//按 URL 生成 axios 请求配置（展开到 axios 请求参数中使用）：
+//- 目标未命中代理环境变量（或命中 NO_PROXY）→ 直连 keep-alive Agent
+//- 目标命中代理 → 对应协议的 keep-alive 隧道 Agent + proxy:false
+//  （proxy:false 同时禁止 axios 走自身"绕过 Agent 且无连接池"的代理路径）
 export function keepAliveAxiosConfig(url: string): { proxy: false, httpAgent: http.Agent, httpsAgent: https.Agent } {
     const proxy = getProxyForUrl(url);
     if (!proxy) {

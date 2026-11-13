@@ -63,7 +63,7 @@ export interface PlayerPtResponse {
 }
 
 /**
- * 本人登录凭据（tracker 2026-09-14 起强制）：B站扫码登录凭据，成对使用。
+ * 本人登录凭据（tracker 强制）：B站扫码登录凭据，成对使用。
  */
 export interface PlayerPtCreds {
     channelUid?: string
@@ -74,7 +74,7 @@ export async function fetchLocalPlayerPt(playerId: number, creds: PlayerPtCreds,
     if (!LOCAL_RANKING_API_URL) {
         throw new Error('本地数据源未配置');
     }
-    // 2026-09-14 起 tracker 的 user 域请求强制本人登录凭据
+    // tracker 的 user 域请求强制本人登录凭据
     const params = new URLSearchParams({ server: '3', playerId: String(playerId) });
     if (creds.channelUid && creds.channelToken) {
         params.set('channelUid', creds.channelUid);

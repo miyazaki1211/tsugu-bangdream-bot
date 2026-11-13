@@ -93,6 +93,8 @@ export function getSpeedParams(
         return { lastep: 0, timeSpanHours: span, windowMinutes: 0 };
     }
 
+    // 剔除异常数据点：EP 低于前一有效点则跳过（不更新锚点），
+    // 防止单个坏点混入回归后外显为离谱或负数时速
     const valid: { time: number; ep: number }[] = [];
     for (let i = 0; i < cutoffs.length; i++) {
         if (valid.length === 0 || cutoffs[i].ep >= valid[valid.length - 1].ep) {
@@ -123,6 +125,9 @@ export function getSpeedParams(
     // 对收集到的点做线性回归求斜率 (EP/ms)
     const slope = regressSlope(changed);
 
+    // 公式: (latestCutoff.ep - lastep) / timeSpanHours = slope * 3600000
+    // lastep 基于原始最新点计算：若最新点本身是坏点，调用方的 latestCutoff.ep
+    // 与此处 last.ep 同为坏值，差值中相互抵消，展示值仍为回归时速
     const speedPerHour = slope * 3600000;
     const windowMinutes = (changed[changed.length - 1].time - changed[0].time) / 60000;
     return { lastep: last.ep - speedPerHour, timeSpanHours: 1, windowMinutes };

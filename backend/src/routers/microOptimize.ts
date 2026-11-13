@@ -11,6 +11,7 @@ import { middleware } from '@/routers/middleware';
 import { Request, Response } from 'express';
 import { Event, getPresentEvent } from "@/types/Event";
 import { drawMicroOptimize } from "@/view/microOptimize";
+import { perfMark } from '@/logger';
 import { getDefaultSongs } from '@/routers/ptMaximize';
 import { MicroApiEnvelope, MicroOptimizeData } from '@/types/MicroTypes';
 
@@ -107,6 +108,7 @@ router.post('',
             const result = await commandMicroOptimize(playerId, getServerByServerId(mainServer), compress);
             res.send(listToBase64(result));
         } catch (e) {
+            console.log(e);
             res.status(500).send({ status: 'failed', data: '内部错误' });
         }
     }
@@ -115,6 +117,7 @@ router.post('',
 
 export async function commandMicroOptimize(playerId: number, mainServer: Server, compress: boolean, eventId?: number, difficultyOverride?: number): Promise<Array<Buffer | string>> {
 
+    const perf = perfMark(`commandMicroOptimize ${playerId} ${Server[mainServer]}`)
     try {
         // 1. 获取玩家档案与活动
         const player: playerDetail = await playerDB.getPlayer(playerId)
@@ -150,6 +153,7 @@ export async function commandMicroOptimize(playerId: number, mainServer: Server,
         if (difficultyOverride != undefined) {
             difficulty = difficultyOverride
         }
+        perf('活动与歌曲解析')
 
         // 4. 调用 calc-result 获取五卡队伍
         const calcData = await postOptimize<CalcResponse>(
@@ -161,6 +165,7 @@ export async function commandMicroOptimize(playerId: number, mainServer: Server,
             },
             Number(process.env.BANGDREAM_OPTIMIZE_TIMEOUT_MS) || 300000 // 队伍计算超时 5 分钟
         )
+        perf('calc-result 请求')
         const teamEntry = calcData.songs?.find(s => s.songId === songId) ?? calcData.songs?.[0]
         const team = teamEntry?.teamCardIds
         if (!team || team.length !== 5) {
@@ -179,9 +184,11 @@ export async function commandMicroOptimize(playerId: number, mainServer: Server,
             },
             Number(process.env.BANGDREAM_OPTIMIZE_TIMEOUT_MS) || 120000
         )
+        perf('micro-optimize 请求')
 
         // 6. 渲染
         const output = await drawMicroOptimize(microData, player, calcData.items, compress)
+        perf('结果渲染')
         return output
     }
     catch (e) {

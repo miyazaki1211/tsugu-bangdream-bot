@@ -20,6 +20,10 @@ import { drawRoundedRectWithText } from '@/image/drawRect';
 import { drawText } from '@/image/text';
 import { Canvas } from 'skia-canvas';
 
+// ============================================================
+//  micro 事件展开 (语义: bangdream-optimize/docs/micro-optimize-design-draft.md §3.1)
+//  与 BestdoriPreview 的展开不同: 不含 Sim/Bar/BPM, 保留 10 种判定类型
+// ============================================================
 
 interface ExpandedMicroEvent {
   kind: string
@@ -79,6 +83,9 @@ function findEvent(events: ExpandedMicroEvent[], opt: MicroOptimization): Expand
   return byIndex ?? best
 }
 
+// ============================================================
+//  谱面叠加层绘制
+// ============================================================
 
 // 6 个技能槽的颜色
 const SLOT_COLORS = ['#FF5A5A', '#3EC6E0', '#F5C542', '#8C6BF0', '#33C481', '#F08A4B']
@@ -252,6 +259,9 @@ function drawMarkers(
   }
 }
 
+// ============================================================
+//  概要块
+// ============================================================
 
 const EVENT_TYPE_NAME: { [type: string]: string } = {
   challenge: '挑战',
@@ -399,6 +409,8 @@ export async function drawMicroOptimize(data: MicroOptimizeData, player: playerD
 
   // 概要块: 统计行 + 队伍行, 合并为单个数据块压缩高度 (drawDatablock 左右各加 100 padding)
   const width = chartCanv.width - 200
+  // 9 个槽位按权重分配: 歌曲 活动 基线分 最高分 提升 综合力 微操项数 总偏移 技能发动次序
+  // (提升槽需要容纳 6 位分差数字, 权重不宜低于 0.09; 歌曲槽内容自适应缩放可适当压缩)
   const slotWeights = [0.24, 0.09, 0.10, 0.10, 0.09, 0.10, 0.08, 0.07, 0.13]
   const widthList = slotWeights.map(w => Math.floor(width * w))
   const slotMaxWidth = (i: number) => widthList[i] - 20

@@ -48,6 +48,8 @@ function isSelf(entry: PlayerPtRankingUser, userId: number): boolean {
     return entry.uid == userId
 }
 
+//绘制邻近排名表格(纵向: 表头 + 每行一条 排名/名称/分数)
+//与查PT 的 drawNearTable 同构, 列头为 分数(歌榜 point 为分数维度)
 function drawNearTable(nearList: PlayerPtRankingUser[], userId: number): Canvas {
     const list: Array<Image | Canvas> = []
     if (nearList.length == 0) {
@@ -163,6 +165,8 @@ export async function drawPlayerMusicData(data: PlayerMusicData, useEasyBG: bool
         }
     }
 
+    //每曲歌榜(逐曲透传响应条目, 数量不硬编码): 曲名行 + 邻近排名表
+    //medley(合计榜, musicId=1 非真实曲目)不显示歌曲信息行;曲内仅 near 表, 不重复展示当前排名/分数
     const isMedley = data.event?.eventType == 'medley'
     const musics = data.musics ?? []
     for (let i = 0; i < musics.length; i++) {

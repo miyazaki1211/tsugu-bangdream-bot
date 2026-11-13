@@ -102,8 +102,8 @@ export function startMemoryMonitor(): () => void {
     if (monitorStop) return monitorStop;
     if (process.env.MEMORY_MONITOR === 'false') return () => undefined;
 
-    const configuredInterval = Number(process.env.MEMORY_MONITOR_INTERVAL_MS ?? 60000);
-    const intervalMs = Number.isFinite(configuredInterval) ? Math.max(5000, configuredInterval) : 60000;
+    const configuredInterval = Number(process.env.MEMORY_MONITOR_INTERVAL_MS ?? 600000);
+    const intervalMs = Number.isFinite(configuredInterval) ? Math.max(5000, configuredInterval) : 600000;
     let previousRss = process.memoryUsage().rss;
     let peakRss = previousRss;
     let gcCount = 0;

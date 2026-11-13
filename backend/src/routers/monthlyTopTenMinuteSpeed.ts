@@ -29,6 +29,7 @@ router.post(
             const result = await commandMonthlyTopTenMinuteSpeed(getServerByServerId(mainServer), compress, monthlyRankingId, date ? new Date(date) : undefined, time, allPlayer);
             res.send(listToBase64(result));
         } catch (e) {
+            console.log(e);
             res.status(500).send({ status: 'failed', data: '内部错误' });
         }
     }

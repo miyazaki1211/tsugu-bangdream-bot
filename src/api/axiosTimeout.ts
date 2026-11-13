@@ -1,3 +1,5 @@
+//统一超时配置（毫秒）
+//主渲染请求：冷路径时后端需串行下载素材并渲染，给足余量
 export const RENDER_TIMEOUT = 60000;
 //fuzzySearch / remoteDB / 外部 API 等小 JSON 请求
 export const API_TIMEOUT = 15000;

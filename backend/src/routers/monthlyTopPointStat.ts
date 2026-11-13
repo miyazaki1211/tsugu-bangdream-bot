@@ -29,6 +29,7 @@ router.post(
             const result = await commandMonthlyTopPointStat(getServerByServerId(mainServer), monthlyRankingId, playerId, tier, compress, limit);
             res.send(listToBase64(result));
         } catch (e) {
+            console.log(e);
             res.status(500).send({ status: 'failed', data: '内部错误' });
         }
     }

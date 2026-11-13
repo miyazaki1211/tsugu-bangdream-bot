@@ -13,6 +13,7 @@ import { Event, getPresentEvent } from '@/types/Event';
 import { buildResult, cardInfo } from "@/types/BuildTypes"
 import { AreaItemType } from "@/types/AreaItem";
 import { drawResult } from "@/view/calcResult";
+import { perfMark } from '@/logger';
 import { compositionResultDB } from "@/database/compositionResultDB";
 
 const router = express.Router();
@@ -199,6 +200,7 @@ export async function commandCalcResult(playerId: number, mainServer: Server, us
     if (currentEvent != player.currentEvent) {
         player = await playerDB.updCurrentEvent(playerId, mainServer, currentEvent)
     }
+    const perf = perfMark(`commandCalcResult e${currentEvent} ${Server[mainServer]}`)
 
     if (!save) {
         save = false
@@ -206,12 +208,15 @@ export async function commandCalcResult(playerId: number, mainServer: Server, us
     const output = []
     try {
         const res: buildResult = await requestRemoteCalcResult(playerId, player, mainServer, currentEvent)
+        perf('计算服务请求')
         if (save) {
             res.description = description
             const saveRes = await resultDB.addResult(player.currentEvent, res)
+            perf('方案保存')
             output.push(`上传成功，当前活动共有${saveRes.compositionList.length}个方案`)
         }
         output.push(...await drawResult(res, currentEvent, useEasyBG, compress))
+        perf('结果渲染')
     }
     catch(e) {
         return [calcErrorMessage(e)]

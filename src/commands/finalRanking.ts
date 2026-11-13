@@ -7,6 +7,8 @@ import { Config } from '../config';
  * 数据经由后端 /finalRanking/* 端点读写(后端负责活动解析, 时限校验与渲染)
  */
 
+//结榜图 / 歌榜结榜图: 提交结榜成绩(后端校验时限并归档到最近结束的活动)
+//groupName 随提交存储, 供查结榜图在会话获取群名失败时兜底
 export async function commandFinalRankingSubmit(config: Config, platform: string, groupId: string, groupName: string | undefined, type: 'event' | 'music', uid: number, ranking: number, value: number, songIndex: number | undefined, signature: string | undefined, recordedBy: string | undefined): Promise<Array<Buffer | string>> {
     return await getReplyFromBackend(`${config.backendUrl}/finalRanking/submit`, {
         platform,
@@ -23,6 +25,8 @@ export async function commandFinalRankingSubmit(config: Config, platform: string
     })
 }
 
+//查结榜图: 生成本群结榜图片, eventId 省略时后端取本群最新有记录的一期
+//图片恒定输出 PNG(与微操计算一致), 不传 compress
 export async function commandFinalRankingQuery(config: Config, platform: string, groupId: string, groupName: string | undefined, eventId: number | undefined): Promise<Array<Buffer | string>> {
     return await getReplyFromBackend(`${config.backendUrl}/finalRanking/query`, {
         platform,

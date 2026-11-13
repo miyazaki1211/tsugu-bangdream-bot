@@ -3,6 +3,11 @@ import { LOCAL_RANKING_API_URL, STAR_VIEWER_Url } from '@/config';
 import { logger } from '@/logger';
 import mainAPI from '@/types/_Main';
 
+// 用 Tracker 数据源（本地 GarupaSpeedTracker / STAR_VIEWER）的活动列表补全 mainAPI['events'] 中缺失的活动时间。
+// 背景：bestdori 对新开放的活动（尤其国服）常常在活动开始一段时间后才补上 startAt/endAt，
+// 在此期间 getPresentEvent 解析不到进行中的活动，档线/前十车速等指令会回退到上一期刚结束的活动，
+// 并提示"没有进行中的活动"。Tracker 直连游戏服采集排名，其活动列表时间与活动实际开放同步。
+// 只补全 bestdori 缺失（null）的时间，不覆盖 bestdori 已有的数据，也不新增 bestdori 未收录的活动。
 
 const OVERLAY_REFRESH_MS = 60 * 1000;
 const SERVER_COUNT = 5;

@@ -21,6 +21,7 @@ router.post(
             const result = await commandCalendar(year, month, compress);
             res.send(listToBase64(result));
         } catch (e) {
+            console.log(e);
             res.status(500).send({ status: 'failed', data: '内部错误' });
         }
     }

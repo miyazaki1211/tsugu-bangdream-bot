@@ -4,6 +4,8 @@ import * as fs from 'fs';
 import { keepAliveAxiosConfig } from '@/api/httpAgent';
 import { logger } from '@/logger';
 
+//错误 URL 黑名单：仅收录 404（资源确实不存在）的 URL，避免后续请求反复下载
+//瞬时网络错误不拉黑，保证可恢复
 const errUrl: string[] = [];
 
 //供 downloadFile 重试逻辑判断"重试是否还有意义"
@@ -40,6 +42,7 @@ export async function download(url: string, directory?: string, fileName?: strin
     let response;
     try {
       response = await axios.get(url, { headers, responseType: 'arraybuffer', timeout: 30000, ...keepAliveAxiosConfig(url) });
+      logger('Perf', `reusedSocket=${response.request?.reusedSocket}`);
     } catch (error) {
       if (error.response && error.response.status === 304) {
         //console.log(`ETag matches for "${url}". Using cached file.`);
@@ -111,6 +114,7 @@ export async function getJsonAndSave(url: string, directory?: string, fileName?:
     let response;
     try {
       response = await axios.get(url, { headers, responseType: 'arraybuffer', timeout: 30000, ...keepAliveAxiosConfig(url) });
+      logger('Perf', `reusedSocket=${response.request?.reusedSocket}`);
     } catch (error) {
       if (error.response && error.response.status === 304) {
         //console.log(`ETag matches for "${url}". Using cached JSON data.`);

@@ -8,6 +8,9 @@ import mainAPI from '@/types/_Main';
 // 确保 old 字体已注册 (FontLibrary.use 在该模块顶层执行)
 import '@/image/text';
 
+// ===== 国服活动日历渲染 =====
+// 视觉规格参考 hhwx.org/bandori/calendar: 暖白底、周一起始的 7 列月历、
+// 按乐队配色的跨天活动条、预测档期虚线边框、休/班角标、今天高亮、成员生日头像
 
 // CST(UTC+8) 天数工具
 const DAY_MS = 86400000;
@@ -45,6 +48,8 @@ const REST_BADGE_BG = '#F6D9D6', MAKEUP_BADGE_BG = '#DDE4EC';
 const TITLE_H = 108, HEAD_H = 54, ROW_H = 222, FOOT_H = 64;
 const HEADERS = ['一', '二', '三', '四', '五', '六', '日'];
 
+// 游戏内 8 支主要乐队 (Poppin'Party / Afterglow / Pastel*Palettes / Roselia /
+// Hello, Happy World! / RAISE A SUILEN / Morfonica / MyGO!!!!!) 的 bandId
 const MAIN_BAND_IDS = new Set([1, 2, 3, 4, 5, 18, 21, 45]);
 
 /** 加深活动条色块: 亮度越高压得越狠, 保证白字可读(黄/薄荷绿最需要) */
@@ -57,6 +62,9 @@ function darkenBar(hexColor: string): string {
     return `#${to(r)}${to(g)}${to(b)}`;
 }
 
+// ===== 成员生日标注 =====
+// 生日数据来自 Bestdori 角色详情 (profile.birthday 为 JST 零点的毫秒时间戳字符串)。
+// 生日与头像均不变, 进程内只加载一次。
 
 interface BirthdayMember {
     characterId: number;
@@ -125,10 +133,13 @@ async function getBirthdayIcon(characterId: number): Promise<Image | undefined> 
 }
 
 export async function drawCalendar(year: number, month: number, compress: boolean = false): Promise<Array<Buffer | string>> {
+    const perf = perfMark(`calendar.drawCalendar ${year}-${month}`);
 
     const { events, holidays } = await getCalendarData();
+    perf('getCalendarData');
 
     const birthdayTable = await getBirthdayTable();
+    perf('birthdayTable');
 
     // 月历网格: 周一开头
     const first = dayNum(Date.UTC(year, month - 1, 1));
@@ -337,5 +348,6 @@ export async function drawCalendar(year: number, month: number, compress: boolea
     text('仅供参考 · 以游戏内公告为准', W - MARGIN, legendY, F(19), FAINT, 'right');
 
     const buffer = compress ? await canvas.toBuffer('jpeg', { quality: imageCompressQuality }) : await canvas.toBuffer('png');
+    perf('render');
     return [buffer];
 }

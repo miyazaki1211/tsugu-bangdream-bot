@@ -39,7 +39,7 @@ export async function fetchLocalPlayerMusic(playerId: number, creds: PlayerPtCre
     if (!LOCAL_RANKING_API_URL) {
         throw new Error('本地数据源未配置');
     }
-    // 2026-09-14 起 tracker 的 user 域请求强制本人登录凭据
+    // tracker 的 user 域请求强制本人登录凭据
     const params = new URLSearchParams({ server: '3', playerId: String(playerId) });
     if (creds.channelUid && creds.channelToken) {
         params.set('channelUid', creds.channelUid);

@@ -9,9 +9,14 @@ import { body } from 'express-validator';
 import { middleware } from '@/routers/middleware';
 import { Request, Response } from 'express';
 import { getPresentEvent } from "@/types/Event";
+import { perfMark } from '@/logger';
 import { drawScoreRangeResult } from '@/view/scoreRange';
 import { ScoreRangeResult, ApiEnvelope } from "@/types/PtTypes";
 
+// ============================================================
+//  对应 bangdream-optimize POST /v1/score-range 的控分搜索
+//  参考: bangdream-optimize/docs/server-api.md
+// ============================================================
 
 const router = express.Router();
 const playerDB = new PlayerDB(
@@ -55,6 +60,7 @@ router.post(
             );
             res.send(listToBase64(result));
         } catch (e) {
+            console.log(e);
             const message = e instanceof Error ? e.message : '内部错误';
             res.status(500).send(listToBase64([message]));
         }
@@ -96,6 +102,7 @@ export async function commandScoreRange(
     }
 
     // 3. 调用 optimize
+    const perf = perfMark(`commandScoreRange e${eventId} ${Server[mainServer]}`)
     const reqBody: Record<string, unknown> = {
         playerId,
         server: Server[mainServer],
@@ -132,6 +139,7 @@ export async function commandScoreRange(
     if (body.status !== 'ok' || !body.data) {
         return [body.message ?? '计算服务返回异常'];
     }
+    perf('计算服务请求');
 
     const results = body.data;
     if (results.length == 0) {
@@ -152,8 +160,10 @@ export async function commandScoreRange(
             compress,
             player,
         });
+        perf('结果渲染');
         return buffers;
     } catch (e) {
+        console.error('scoreRange draw error:', e);
         return [
             '控分结果渲染失败: ' +
                 (e instanceof Error ? e.message : String(e)),

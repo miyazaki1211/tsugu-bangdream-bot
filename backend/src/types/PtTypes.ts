@@ -1,3 +1,9 @@
+// ============================================================
+//  对应 bangdream-optimize POST /v1/pt-maximize 的请求/响应类型
+//  参考文档: PT计算搜索-API文档.txt
+//  以及 POST /v1/score-range 的响应类型
+//  参考文档: bangdream-optimize/docs/server-api.md
+// ============================================================
 
 export type LiveVariant = 'solo' | 'cooperative' | 'versus' | 'festival' | 'medley' | 'challenge_cp';
 

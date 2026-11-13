@@ -1,3 +1,5 @@
+// 文件日志必须最先加载: 拦截其后所有模块的 stdout/stderr, 镜像到 backend/logs/
+import '@/fileLog';
 import express from 'express';
 import { gachaSimulateRouter } from '@/routers/gachaSimulate';
 import { cardIllustrationRouter } from '@/routers/getCardIllustration';
@@ -50,13 +52,13 @@ import { finalRankingRouter } from '@/routers/finalRanking';
 
 import { logger } from '@/logger'
 import * as dotenv from 'dotenv';
-import { startEventTimeOverlay } from '@/api/eventTimeOverlay';
 import { startMemoryMonitor } from '@/monitoring/memoryMonitor';
+import { startEventTimeOverlay } from '@/api/eventTimeOverlay';
 
 
 dotenv.config();
-startEventTimeOverlay();
 startMemoryMonitor();
+startEventTimeOverlay();
 
 
 const app = express();

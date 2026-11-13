@@ -383,6 +383,8 @@ export function drawListWithLine(textImageList: Array<Canvas | Image>): Canvas {
     return canvas
 }
 
+//optimize 返回的 items.band: "1000"=全体乐队, 单个乐队id, 或逗号分隔的多乐队id
+//全体乐队与多乐队目标都是"大家的乐器"类道具, 显示文字而非逐团图标
 export async function drawBandItemContent(bandId: string): Promise<Array<string | Canvas | Image>> {
     if (bandId === '1000') {
         return ['大家的乐器'];

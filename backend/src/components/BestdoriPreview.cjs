@@ -164,6 +164,8 @@ async function DrawPreview ({id, title, artist, author, diff, level, cover, rend
 
     const secondsPerCol = chartLength / colCount;
 
+    // 超采样渲染: canvas 物理尺寸 ×renderScale, ctx.scale 保持逻辑坐标系, 输出前降采样回原尺寸
+    // 提升 1px 线条/小字/圆环等细元素的边缘清晰度; 默认 1 = 行为与旧版完全一致
     const renderScaleFactor = (Number.isFinite(renderScale) && renderScale > 1) ? renderScale : 1;
     const canvas = new Canvas.Canvas(width * renderScaleFactor, height * renderScaleFactor);
     const ctx = canvas.getContext('2d');

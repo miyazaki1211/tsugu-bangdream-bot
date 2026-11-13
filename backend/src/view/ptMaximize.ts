@@ -166,6 +166,8 @@ async function drawPtMaximizeResult(
 
         // 活动pt加成 — 5种加成逐卡计算
         const teamCardIds = data.team.teamCardIds;
+        // 同时满足属性+角色的额外加成只取 pointPercent;
+        // parameterPercent 是参数加成(提升综合力), 不计入活动pt加成
         const combinedPercent = event.eventAttributeAndCharacterBonus?.pointPercent ?? 0;
         const cardList = opts?.player?.cardList;
         let totalBonus = 0;

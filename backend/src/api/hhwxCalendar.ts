@@ -2,6 +2,10 @@ import { callAPIAndCacheResponse } from '@/api/getApi';
 import { HHWX_Url } from '@/config';
 import mainAPI from '@/types/_Main';
 
+// ===== HHWX 国服活动日历数据层 =====
+// 数据来源:
+//   活动主数据: https://hhwx.org/api/bandori/master/events  (含官方 startAt[3] 与未公布时的 cnSchedule 预测档期)
+//   国服节假日: https://hhwx.org/api/bandori/calendar/cn/holidays (restDays 休 / makeupWorkDays 班, 数据源 icloud)
 
 export interface CalendarEvent {
     eventId: number;

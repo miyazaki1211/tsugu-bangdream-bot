@@ -45,6 +45,9 @@ export var USE_HHWX_SOURCE_PREFER = false;   // 是否优先使用HHWX的Tracker
 export const STAR_VIEWER_Url: string = process.env.RANKING_API_BASE_URL || 'https://grp-speed-backend.starfreedomx.top';
 export var USE_STAR_VIEWER_SOURCE_PREFER = true;   // 是否优先使用STAR_VIEWER的Tracker数据
 
+// 本地 GarupaSpeedTracker 数据源（与 STAR_VIEWER 同一套 API 的本地部署实例，直连国服游戏服采集）
+// 启动时探测一次：端口可达则将该数据源插入排名回退链最前（star_viewer 之前）；不可达则保持原有数据源顺序
+// 可通过环境变量 LOCAL_RANKING_API_URL 指定地址，设为空字符串可禁用本地数据源
 export const LOCAL_RANKING_API_URL: string = process.env.LOCAL_RANKING_API_URL !== undefined ? process.env.LOCAL_RANKING_API_URL.trim() : 'http://127.0.0.1:5519';
 export var USE_LOCAL_RANKING_API = false;   // 本地数据源探测结果，探测成功后置为 true
 export function enableLocalRankingAPI() {
@@ -92,6 +95,8 @@ export const MONTHRANKING_TURNS: Record<string, string[]> = {
 // 统一解析：将server和turns配置转换为 {url, name} 数组
 export function resolveSourceUrls(server: string, turnsConfig: Record<string, string[]>): {url: string, name: string}[] {
     let keys = turnsConfig[server] || turnsConfig["default"] || ["bestdori"];
+    // 本地 GarupaSpeedTracker 探测可用时，插入到回退链最前（star_viewer 之前）。
+    // 仅对本地实例真正持有直连数据的服务器生效（cn=国服直连；global=与服务器无关的月榜索引），其余服务器保持原链路
     if (USE_LOCAL_RANKING_API && LOCAL_RANKING_API_URL && (server === 'cn' || server === 'global')) {
         keys = ['local_gs', ...keys.filter(key => key !== 'local_gs')];
     }

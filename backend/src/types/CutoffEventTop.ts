@@ -43,6 +43,8 @@ export class CutoffEventTop{
         this.endAt = event.endAt[server]
         var time = new Date().getTime()
         if (event.startAt[this.server] == null || event.endAt[this.server] == null) {
+            //该服务器活动时间未知时（bestdori 未收录且 Tracker 未补全），不能与 null 比较误判为 ended，
+            //默认视为进行中，由活动数据是否存在兜底
             this.status = 'in_progress';
         }
         else if (time < event.startAt[this.server]) {

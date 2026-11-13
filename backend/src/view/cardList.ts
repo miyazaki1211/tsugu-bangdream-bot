@@ -218,6 +218,8 @@ const playerDB = new PlayerDB(
     process.env.MONGODB_DATABASE_NAME ?? 'tsugu-bangdream-bot'
 );
 
+//获取玩家已导入的卡牌数据(卡牌ID → 星光等级/技能等级等)，
+//未提供玩家信息、玩家未导入卡牌数据或查询失败时返回空Map(不显示绿色标记与等级渲染)
 async function getPlayerOwnedCardMap(playerInfo?: { playerId: number, server: Server }): Promise<Map<number, OwnedCardInfo>> {
     const ownedCardMap = new Map<number, OwnedCardInfo>();
     if (playerInfo == undefined) {
@@ -235,6 +237,7 @@ async function getPlayerOwnedCardMap(playerInfo?: { playerId: number, server: Se
     }
     catch (e) {
         //获取玩家卡牌数据失败时不影响卡牌列表的正常渲染
+        console.log(e);
     }
     return ownedCardMap;
 }
@@ -288,6 +291,9 @@ async function drawCardListLine(cardList: Card[], ownedCardMap: Map<number, Owne
         })
         var ratio = 120 / cardIcon.width
         ctx.drawImage(cardIcon, i * 140, 0, cardIcon.width * ratio, cardIcon.height * ratio)
+        //在卡牌ID右侧绘制圆形标记(与卡牌右侧对齐)，标记颜色判定与是否绑定玩家无关:
+        //日服限定卡(运行时判定: 日服已发布且国服未发布): 卡牌ID小于国服当前活动卡牌最大ID → 红色(国服已错过, 大概率不会再上), 大于 → 灰色(国服尚未追上, 之后会出)
+        //其余卡牌: 仅当玩家已绑定且账号内导入了卡牌数据时, 已拥有 → 绿色
         let markerColor: string | null = null
         const isJpOnlyCard = tempCard.releasedAt[Server.jp] != null && tempCard.releasedAt[Server.cn] == null
         if (isJpOnlyCard) {

@@ -23,6 +23,8 @@ async function callAPIAndCacheResponse(url: string, cacheTime: number = 0, retry
       }
       logger(`API`, `Failed to get JSON from "${url}" on attempt ${attempt + 1}. Error: ${e.message}`);
       if (attempt === retryCount - 1) {
+        //所有重试均失败：若磁盘上存在过期缓存，则返回旧数据兜底，
+        //避免外部数据源抖动直接导致指令失败
         try {
           const cachedData = fs.readFileSync(path.join(cacheDir, fileName), 'utf-8');
           logger(`API`, `All attempts failed for "${url}". Falling back to stale cache.`);

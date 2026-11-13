@@ -454,6 +454,8 @@ export class Event {
 
 //获取当前进行中的活动,如果期间没有活动，则返回24小时内即将开始的活动，否则返回上一个刚结束的活动
 export function getPresentEvent(server: Server, time?: number) {
+    //bestdori 数据中时间戳常为字符串 (如 gacha 的 publishedAt), Number.isFinite 对字符串恒为 false
+    //会导致时间戳被静默丢弃而回退为当前时间, 因此先统一转换为数字
     time = Number(time)
     if (!time || !Number.isFinite(time)) {
         time = Date.now()
@@ -507,6 +509,8 @@ export function getPresentEvent(server: Server, time?: number) {
     return new Event(endedList[endedList.length - 1])
 }
 
+//获取最近一个已结束的活动(完全忽略进行中/即将开始的活动), 用于结榜图等"活动结算后"场景:
+//例如新活动327开启后, 本函数仍返回刚结束的326
 export function getLatestEndedEvent(server: Server, time?: number): Event | null {
     if (!time || !Number.isFinite(time)) {
         time = Date.now()

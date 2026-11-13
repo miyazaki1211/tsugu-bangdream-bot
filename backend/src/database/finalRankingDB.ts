@@ -39,6 +39,9 @@ interface FinalRankingEventDocument {
     groups: { [platformGroupId: string]: FinalRankingGroup };
 }
 
+//群组键: 'platform:groupId'
+//注意: 该键会被拼入 Mongo 点路径查询(groups.<key>), platform/groupId 不得包含 '.' 或以 '$' 开头;
+//QQ(onebot)群号等主流平台均为纯数字, 满足约束
 function groupKey(platform: string, groupId: string): string {
     return `${platform}:${groupId}`;
 }
